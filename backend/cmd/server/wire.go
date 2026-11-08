@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/mok" // [mok]
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
@@ -45,7 +46,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		handler.ProviderSet,
 
 		// Server layer ProviderSet
-		server.ProviderSet,
+		server.ProvideRouter, mok.ServerProviderSet, // [mok] was server.ProviderSet, see FORK.md
 
 		// Privacy client factory for OpenAI training opt-out
 		providePrivacyClientFactory,

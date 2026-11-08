@@ -283,6 +283,7 @@
               </div>
             </div>
           </template>
+          <template #cell-mok_claude_plan="{ row }"><MokClaudePlanCell :account="row" /></template> <!-- [mok] -->
           <template #cell-capacity="{ row }">
             <AccountCapacityCell :account="row" />
           </template>
@@ -527,6 +528,7 @@ import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import AccountPriorityCell from '@/components/account/AccountPriorityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
+import { MokClaudePlanCell, mokAddAccountColumns } from '@/mok/accounts' // [mok]
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
@@ -1848,6 +1850,7 @@ const allColumns = computed(() => {
     { key: 'notes', label: t('admin.accounts.columns.notes'), sortable: false },
     { key: 'actions', label: t('admin.accounts.columns.actions'), sortable: false }
   )
+  mokAddAccountColumns(c, t) // [mok]
   return c
 })
 

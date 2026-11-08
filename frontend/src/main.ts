@@ -1,3 +1,4 @@
+import { installMok } from './mok' // [mok] fork features, see FORK.md
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
@@ -51,6 +52,7 @@ async function bootstrap() {
   updateFavicon(appStore.siteLogo)
 
   await initI18n()
+  await installMok(app) // [mok] fork features, see FORK.md
 
   app.use(router)
   app.use(i18n)
