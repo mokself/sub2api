@@ -322,10 +322,58 @@ git log upstream/main --since="90 days ago" --name-only --pretty=format: | grep 
 
 ## 9. 发版
 
-- 上游的 `release.yml` 由 `v*` tag 触发，镜像发到 `ghcr.io/<仓库所有者>/sub2api`，在 fork 上也能用。但它发版成功后会往默认分支推一个修改 `backend/cmd/server/VERSION` 的提交，之后每次同步都会在这个文件上冲突。
-- 建议在 GitHub 网页上停用上游的 `release.yml` 和 `cla.yml`：Actions → 选中 workflow → Disable workflow。不要删除这两个文件。
-- fork 的发版流程另写在 `.github/workflows/mok-release.yml` 里。用和上游区分开的 tag 前缀，例如 `mok-v*`。
-- 版本号用 `-ldflags "-X main.Version=<版本号>"` 注入。`backend/cmd/server/main.go` 里，ldflags 注入的版本号优先于内嵌的 `VERSION` 文件，所以不需要修改 `VERSION`。
+fork 的 Docker 镜像由 fork 自己的 `.github/workflows/mok-release.yml` 构建：
+
+- 先跑 fork 的前后端测试，通过后构建 amd64 + arm64 双架构镜像，推到 `ghcr.io/mokself/sub2api`。
+- 上游的 `release.yml` 不用它。原因是它由 `v*` tag 触发，发版成功后还会往默认分支推一个修改 `backend/cmd/server/VERSION` 的提交，以后每次同步上游都会在这个文件上冲突。
+
+### 发一个版本
+
+在要发布的提交上打 tag 并推送。tag 格式是 `mok-v<上游版本>.<fork 序号>`：
+
+```bash
+git tag mok-v0.2.20.1
+```
+
+```bash
+git push origin mok-v0.2.20.1
+```
+
+- 推送后会得到两个镜像标签：`0.2.20-mok.1` 和 `latest`。后台显示的版本号是 `0.2.20-mok.1`。
+- 同一个上游版本上再发版就递增序号，比如 `mok-v0.2.20.2`；同步到上游 0.2.21 之后序号从 1 重新开始，即 `mok-v0.2.21.1`。
+- 不要打 `v` 开头的 tag，那会触发上游的 `release.yml`。
+- 想重新构建已有的 tag：进入 Actions → mok release image → Run workflow，在 "Use workflow from" 里选中那个 tag。
+
+版本号由工作流通过构建参数 `VERSION` 传给 Dockerfile，再用 ldflags 注入程序，所以不需要修改 `VERSION` 文件。
+
+### 第一次使用前（在 GitHub 网页上操作）
+
+1. **启用 Actions。** GitHub 默认不运行 fork 里的工作流。打开仓库的 Actions 页，点 "I understand my workflows, go ahead and enable them"。
+2. **停用两个上游工作流（建议）。** 启用后，上游的 `release.yml` 和 `cla.yml` 也会一起启用。在 Actions 页选中它们，点右上角 "…" → Disable workflow，不要删文件。上游的 CI 和 Security Scan 可以留着，每次推送都会帮你跑一遍测试。
+3. **把镜像设为公开。** 第一次构建成功后，GitHub 新建的镜像包默认是私有的。在 GitHub 个人主页 → Packages → sub2api → Package settings 里，把 visibility 改成 Public。如果想保持私有，就得在服务器上用一个有 `read:packages` 权限的 token 执行 `docker login ghcr.io`。
+
+### 服务器上的部署
+
+在部署目录的 `docker-compose.override.yml` 里，把镜像换成 fork 的：
+
+```yaml
+services:
+  sub2api:
+    image: ghcr.io/mokself/sub2api:latest
+```
+
+以后的更新和用上游镜像时一样：
+
+```bash
+docker compose pull
+```
+
+```bash
+docker compose up -d
+```
+
+- 想固定版本、方便回滚，就把 `latest` 换成具体的标签，比如 `0.2.20-mok.1`。
+- 后台的「在线更新」和「回滚」会从上游 Wei-Shaw/sub2api 下载程序，把 fork 的功能覆盖掉。fork 部署不要用这两个功能，更新一律走「推 tag → `docker compose pull`」这条路。
 
 ## 10. 本地开发注意事项
 

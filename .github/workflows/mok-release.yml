@@ -1,0 +1,115 @@
+# [mok] Fork-only workflow (see FORK.md, section 9). Builds the fork's Docker image and
+# pushes it to GitHub Container Registry. Upstream's release.yml is left alone: it only
+# reacts to v* tags, and after a release it commits a VERSION bump to main.
+#
+# Release: push a tag mok-v<upstream version>.<fork build>, for example mok-v0.2.20.1.
+# It is published as ghcr.io/<owner>/sub2api:0.2.20-mok.1 and :latest, and the admin UI
+# shows version 0.2.20-mok.1.
+name: mok release image
+
+on:
+  push:
+    tags:
+      - 'mok-v*'
+  # Rebuild an existing tag: Actions > mok release image > Run workflow, choose the tag as the ref.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: mok-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Fork backend unit tests
+        working-directory: backend
+        run: go test -tags=unit ./internal/mok/ ./cmd/server/
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Fork frontend tests
+        working-directory: frontend
+        run: pnpm exec vitest run src/mok
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Resolve version from tag
+        id: meta
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # mok-v<major>.<minor>.<patch>.<fork build> -> <major>.<minor>.<patch>-mok.<fork build>
+          if [[ "$REF_TYPE" != "tag" || ! "$REF_NAME" =~ ^mok-v([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Run this workflow on a tag such as mok-v0.2.20.1 (got $REF_TYPE '$REF_NAME')"
+            exit 1
+          fi
+          {
+            echo "version=${BASH_REMATCH[1]}-mok.${BASH_REMATCH[2]}"
+            echo "image=ghcr.io/${OWNER,,}/sub2api"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
+          # The Dockerfile defaults to China mirrors for Go modules; GitHub runners use the official ones.
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.meta.outputs.date }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Summary
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          {
+            echo "### Pushed"
+            echo "- \`$IMAGE:$VERSION\`"
+            echo "- \`$IMAGE:latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
