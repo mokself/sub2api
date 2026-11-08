@@ -350,7 +350,7 @@ git push origin mok-v0.2.20.1
 
 1. **启用 Actions。** GitHub 默认不运行 fork 里的工作流。打开仓库的 Actions 页，点 "I understand my workflows, go ahead and enable them"。
 2. **停用两个上游工作流（建议）。** 启用后，上游的 `release.yml` 和 `cla.yml` 也会一起启用。在 Actions 页选中它们，点右上角 "…" → Disable workflow，不要删文件。上游的 CI 和 Security Scan 可以留着，每次推送都会帮你跑一遍测试。
-3. **把镜像设为公开。** 第一次构建成功后，GitHub 新建的镜像包默认是私有的。在 GitHub 个人主页 → Packages → sub2api → Package settings 里，把 visibility 改成 Public。如果想保持私有，就得在服务器上用一个有 `read:packages` 权限的 token 执行 `docker login ghcr.io`。
+3. **确认镜像能匿名拉取。** 2026-11-08 第一次构建（`mok-v0.2.20.1`）之后验证过：仓库是公开的，`ghcr.io/mokself/sub2api` 不登录就能拉取。如果以后把仓库或镜像包改成私有，就要在服务器上用一个有 `read:packages` 权限的 token 先执行 `docker login ghcr.io`。镜像包的可见性在 GitHub 个人主页 → Packages → sub2api → Package settings 里调整。
 
 ### 服务器上的部署
 
