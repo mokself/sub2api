@@ -11,6 +11,74 @@ export default {
       unsupportedScope: '授权缺少 user:profile 权限，重新授权后才能获取套餐',
       unsupportedOther: '该账号无法获取套餐',
       subscriptionStatus: '订阅状态 {status}'
+    },
+    affiliateTiers: {
+      title: '阶梯返利',
+      description:
+        '邀请人的返利比例随累计推广额提高：累计推广额（含本笔充值）达到某一档后，这一笔充值整笔按该档比例返利。低于第一档时按上面的「全局返利比例」；设了专属比例的用户继续用专属比例，不走阶梯。不设档位时，所有人都按全局比例。',
+      volumeHint:
+        '累计推广额 = 邀请人本人和名下所有被邀请人的累计充值：已完成且未退款的在线支付订单的到账金额（不含充值赠送），加上已使用的余额兑换码。管理员直接加的余额不计入。金额单位与余额相同。',
+      minAmountLabel: '累计推广额达到',
+      rateLabel: '返利比例',
+      addTier: '添加档位',
+      removeTier: '删除这一档',
+      empty: '还没有档位，所有邀请人都按全局返利比例返利。',
+      maxTiers: '最多 {max} 个档位',
+      save: '保存阶梯',
+      saving: '保存中…',
+      saved: '阶梯返利已保存',
+      unsaved: '有未保存的修改',
+      loadFailed: '阶梯返利设置加载失败',
+      saveFailed: '阶梯返利保存失败',
+      retry: '重试',
+      errors: {
+        minAmountInvalid: '门槛金额要大于 0',
+        rateInvalid: '返利比例要在 0 到 100 之间',
+        minAmountDuplicate: '和其他档位的门槛金额重复'
+      },
+      user: {
+        title: '阶梯返利',
+        currentRate: '当前返利比例',
+        teamVolume: '累计推广额',
+        teamVolumeHint: '你自己和你邀请的用户累计充值的到账金额（不含充值赠送，含兑换码）',
+        nextTier: '再累计 {amount}，返利比例升到 {rate}%',
+        topTier: '已达到最高档',
+        ladder: '返利阶梯',
+        baseRow: '累计不足 {amount}',
+        tierRow: '累计达到 {amount}',
+        current: '当前',
+        usageMode: '按被邀请用户每天的余额消耗返利，次日结算；升档仍看累计充值。'
+      }
+    },
+    affiliateMode: {
+      title: '返利方式',
+      description:
+        '充值返利：被邀请人充值时按比例返利（原有方式）。消耗返利：充值不再返利，改为每天结算一次，按被邀请人前一天的余额消耗返利，订阅套餐内的用量不算。两种方式都按「专属比例 → 阶梯 → 全局比例」确定比例，阶梯仍按累计充值定档；单人返利上限、返利有效期、冻结期照常生效。',
+      recharge: '充值返利',
+      usage: '消耗返利',
+      since: '消耗返利开始于 {time}，从这一刻起的余额消耗参与结算。',
+      until: '消耗返利已于 {time} 停止，在此之前的消耗仍会结算完。',
+      settleHint: '每天 0:30 之后结算前一天，日期按服务器时区划分。',
+      confirmTitle: '切换返利方式',
+      confirmToUsage: '切换为消耗返利后，充值不再产生返利，从现在起被邀请人的余额消耗每天结算一次。确定切换吗？',
+      confirmToRecharge: '切换回充值返利后，从现在起的消耗不再返利（之前的消耗仍会结算完），充值重新产生返利。确定切换吗？',
+      confirm: '确定切换',
+      cancel: '取消',
+      switched: '返利方式已切换',
+      switchFailed: '返利方式切换失败',
+      loadFailed: '返利方式加载失败',
+      retry: '重试',
+      recentDays: '最近结算',
+      noDays: '还没有结算记录',
+      columns: {
+        day: '日期',
+        invitees: '人数',
+        usage: '消耗',
+        rebate: '返利'
+      },
+      skipped: {
+        affiliate_disabled: '返利总开关关闭，未返利'
+      }
     }
   }
 }

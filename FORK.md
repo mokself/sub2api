@@ -48,6 +48,9 @@ git grep -n "\[mok\]"
 | `backend/cmd/server/wire_gen.go` | 生成文件，内容随 `wire.go` 变化 | 不要手改；按 4.1 的命令重新生成 |
 | `frontend/src/main.ts` | 第一行导入 `installMok`；在 `await initI18n()` 之后调用 `await installMok(app)` | fork 前端入口 |
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
+| `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent` | 阶梯返利的计算和比例展示；消耗返利模式下 `mokTieredRebateRatePercent` 返回 0，充值不再返利。见第 11 节 |
+| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」和「阶梯返利」两张卡片 |
+| `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片；消耗返利模式下改写页面上讲充值返利的两句话 |
 
 ## 3. 先看能不能零代码
 
@@ -70,7 +73,7 @@ git grep -n "\[mok\]"
 - `mok.ServerProviderSet` 里的 `mok.ProvideHTTPServer` 包装了上游的 `server.ProvideHTTPServer`，并以 `*mok.Module` 为参数。所以 wire 会先构建 fork 模块（注册路由），再创建 HTTP server。
 - 这样做不需要往上游的 `Application` 结构体和 `wire.Struct(...)` 那一行加字段。那两处每次上游给 `Application` 加字段都会改，而 `server.ProviderSet` 自 2025-12 起就没变过。
 - 如果上游往 `server.ProviderSet` 里新增了 provider，要把它补到 `wire.go` 那一行里。重新生成 `wire_gen.go` 时，wire 会直接报出缺少的 provider，不会悄悄出错。
-- 代价是 fork 模块拿不到上游 `Application` 的生命周期（目前只有 `Cleanup`）。以后 fork 功能需要后台任务和优雅退出时，再考虑给 `Application` 加字段。
+- fork 的后台任务在 `NewModule` 里启动；`mok.ProvideHTTPServer` 用 `srv.RegisterOnShutdown(m.Stop)` 让它们在 HTTP server 优雅退出时停止，同样不用碰上游的 `Application`。新的后台任务在 `Module.Stop()` 里加上停止调用即可。
 
 新功能要接入时，往 `mok.ProviderSet` 里加 provider，再把 handler 挂到 `NewModule` 上就行，不用再改 `wire.go`。
 
@@ -124,6 +127,7 @@ frontend/src/mok/
 ├── i18n/         # fork 文案 zh.ts / en.ts，合并逻辑，mt() / mokKey()
 ├── api/          # fork 接口封装
 ├── accounts/     # 账号管理页的扩展（Claude 套餐列）
+├── affiliate/    # 邀请返利的扩展（返利方式、阶梯返利）
 └── __tests__/    # fork 自己的测试
 ```
 
@@ -142,6 +146,8 @@ import { installMok } from './mok' // [mok] fork features, see FORK.md
 - 必须在 `app.use(router)` 之前。路由器在 `app.use(router)` 时开始首次导航，fork 的路由如果注册晚了，直接打开 fork 页面的地址会匹配不到。
 
 以后新增的 fork 前端功能都在 `installMok` 里接入，不用再改 `main.ts`。
+
+**往上游页面里插组件**：在 `installMok` 里用 `app.component('MokXxx', defineAsyncComponent(...))` 注册成全局异步组件，再到 `src/mok/components.d.ts` 的 `GlobalComponents` 里声明类型。这样上游模板里只要加一行 `<MokXxx />`，不用在上游文件的 `<script>` 里加 import；import 区是上游经常改的地方，容易冲突。上游的单元测试不认识这个组件，Vue 会打印一条 resolve 警告，测试照常通过。
 
 ### 5.2 路由
 
@@ -165,6 +171,8 @@ import { installMok } from './mok' // [mok] fork features, see FORK.md
 - 注释里也别写出上面那几种调用形式。
 
 fork 自己的 key 由 `src/mok/__tests__/i18n.spec.ts` 检查：zh 和 en 的 key 一一对应、没有空值，所有 `mt('…')` / `mokKey('…')` 引用的 key 都存在。
+
+**改写上游页面上的文案**：不改上游语言包，把新句子写在 fork 里，运行时用 `mergeLocaleMessage` 盖到上游的 key 上，需要时再换回原句。现有的例子是 `src/mok/i18n/affiliateUsageWording.ts` 和 `setAffiliateUsageWording()`。`i18n.spec.ts` 会检查被改写的 key 在上游语言包里还存在、占位符（如 `{rate}`）和上游一致；上游改了这些 key 的名字或占位符时，这个测试会失败。
 
 ### 5.4 侧边栏菜单
 
@@ -396,6 +404,13 @@ docker compose up -d
   TESTCONTAINERS_RYUK_DISABLED=true go test -tags=integration ./internal/mok/
   ```
 
+- **不开 Docker 也能跑 fork 的集成测试。** 把 `MOK_TEST_POSTGRES_DSN` 设成一个本地 PostgreSQL 的连接串（`postgres://` URL 格式，用户要有建库权限），测试会在上面为每个用例建一个临时库、跑完全部迁移、结束后删掉：
+
+  ```bash
+  MOK_TEST_POSTGRES_DSN='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' go test -tags=integration ./internal/mok/
+  ```
+
+- **上游自带一个会失败的单元测试。** `internal/service` 里的 `TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort` 在 2026-11-09 用纯上游代码（`6b4b37db4`）也会失败，和 fork 无关。全量跑单元测试看到它失败时不用排查，同步上游后再看是否已修复。
 - **fork 的测试在不在 CI 里：**
   - 后端测试打了 `unit` / `integration` 构建标签，会跟着上游 CI 的 `make test-unit` / `make test-integration` 一起跑；
   - 前端的 CI 只跑根目录 `Makefile` 里列出的关键测试，fork 的前端测试不在其中，需要本地运行 `npx vitest run src/mok`。lint 和类型检查在 CI 里覆盖了 fork 代码。
@@ -423,3 +438,62 @@ docker compose up -d
     - 列表加载后，把当前页的 Claude OAuth 账号按每批 20 个合并请求 `GET /api/v1/mok/admin/claude-plan-tiers?ids=…`；
     - 单元格上的刷新按钮会带 `refresh=true` 强制重新获取。
 - **代码位置**：后端在 `backend/internal/mok/`，前端在 `frontend/src/mok/accounts/` 和 `frontend/src/mok/api/claudePlan.ts`。
+
+### 阶梯返利（2026-11-09）
+
+邀请返利原来是固定比例，现在邀请人的返利比例会随「累计推广额」提高。在后台「系统设置 → 功能开关 → 邀请返利」里，全局返利比例下方的「阶梯返利」卡片里配置，例如「累计推广额达到 $50,000 → 12%，达到 $100,000 → 15%」。
+
+- **累计推广额**：邀请人本人加上名下所有直接被邀请人的累计充值。包括：
+  - 已完成、未退款的在线支付订单：余额充值按到账金额、不含充值赠送，订阅按订单金额；有退款申请但还没退的仍然计入，已退款和部分退款的不计入；
+  - 已使用的余额兑换码（不含支付订单自动生成的 `PAY-` 兑换码，避免重复计算）。
+
+  管理员在后台直接加的余额不计入累计额，但这笔充值本身照常按当前档位返利。被邀请人的被邀请人不算在内。累计额每次从订单表和兑换码表实时汇总，不另外存表，所以上线前的历史充值和之后的退款都会自动反映出来。
+- **计算规则**：
+  - 判断档位用的累计额包含本笔充值；达到某一档后，这一笔整笔按该档比例返利。
+  - 低于第一档时按「全局返利比例」。
+  - 设了专属比例的邀请人继续用专属比例，不走阶梯。
+  - 单人返利上限、返利有效期、冻结期照常生效。
+  - 不配置任何档位时，行为和上游完全一样。
+- **展示**：
+  - 用户的邀请返利页：顶部「我的返利比例」和「使用说明」都显示当前档位的比例；下方新增阶梯进度卡片，显示累计推广额、离下一档还差多少和完整阶梯。设了专属比例的用户不显示这张卡片。
+  - 管理端「邀请返利 → 记录」里的用户概览，也显示当前档位的比例。
+- **存储与接口**：
+  - 阶梯存在 `settings` 表的 `mok_affiliate_rebate_tiers` 键里（JSON 数组），不需要迁移。
+  - 管理端：`GET` / `PUT /api/v1/mok/admin/affiliate-rebate-tiers`，最多 20 档，比例 0–100，门槛大于 0 且不能重复；`PUT` 会记入操作审计。
+  - 用户端：`GET /api/v1/mok/affiliate/rebate-tiers`。
+- **出错时**：查询累计额失败时，这笔返利会返回错误：在线支付订单会走上游原有的重试流程，不会按全局比例少返；只用于展示的地方查询失败时退回显示全局比例。
+- **代码位置**：
+  - 后端：计算在 `backend/internal/service/affiliate_service_mok.go`，累计额 SQL 在 `backend/internal/repository/affiliate_repo_mok.go`，接口在 `backend/internal/mok/affiliate_tiers_handler.go`。
+  - 前端：组件在 `frontend/src/mok/affiliate/`，接口封装在 `frontend/src/mok/api/affiliateTiers.ts`。
+
+### 消耗返利（2026-11-09）
+
+返利方式可以在「充值返利」和「消耗返利」之间切换，在后台「系统设置 → 功能开关 → 邀请返利」的「返利方式」卡片里操作，切换前会弹窗确认。默认是充值返利，和上游一样。
+
+- **充值返利**：被邀请人充值时按比例返利，即上游原有方式，叠加上面的阶梯返利。
+- **消耗返利**：
+  - 充值不再返利；每天结算一次，按每个被邀请人前一天的**余额消耗**给邀请人返利。
+  - 余额消耗 = `usage_logs` 里计费方式为余额（`billing_type = 0`）的 `actual_cost` 之和；订阅套餐内的用量不算。
+  - 比例和充值返利一样按「专属比例 → 阶梯 → 全局比例」确定，阶梯仍按累计充值（推广额）定档，按结算时的档位计算。
+  - 单人返利上限、返利有效期（从被邀请人绑定邀请关系时算起）、冻结期照常生效；返利额度记进上游的 `aff_quota` 等字段，和充值返利共用提现、转余额流程。
+  - 结算时邀请返利功能是关闭的，那一天会记为「已跳过」，不返利，之后再打开也不补。
+- **结算时间**：
+  - 日期按服务器时区（`TZ`）划分。每天 0:30 之后结算前一天；后台任务每 5 分钟检查一次，启动 1 分钟后第一次检查。
+  - 服务停机期间漏掉的日子会在恢复后补结算；每次检查最多处理 62 天，更多的积压在后面几次检查里接着补。
+  - 多实例部署时用 Redis 锁（`mok:affiliate_usage_rebate`）保证同一时间只有一个实例在结算。
+- **切换的边界**：
+  - 切到消耗返利时记下切换时刻（`mok_affiliate_usage_rebate_since`），只结算这之后的消耗；切换当天只算切换时刻之后的部分。
+  - 切回充值返利时记下结束时刻（`mok_affiliate_usage_rebate_until`），结束之前的消耗照常在次日结算完，之后的不再结算。
+  - 再次切到消耗返利时，起点重新记为新的切换时刻，结束时刻清空。
+- **不会重复返利**：每个「被邀请人 + 日期」只结算一次。结算记录和返利额度在同一个事务里写入，中途失败会整体回滚，下次重试。
+- **展示**：
+  - 管理端「返利方式」卡片显示当前方式、起止时刻和最近 14 天的结算汇总（被邀请人数、消耗额、返利额）。
+  - 用户的邀请返利页：「我的返利比例」下的说明和「使用说明」第 2 条改为讲消耗返利；阶梯进度卡片里加一句说明。
+- **存储与接口**：
+  - 方式和起止时刻存在 `settings` 表的 `mok_affiliate_rebate_mode`（`recharge` / `usage`）、`mok_affiliate_usage_rebate_since`、`mok_affiliate_usage_rebate_until` 三个键里。
+  - 结算明细在 `mok_affiliate_usage_rebates` 表（每个被邀请人每天一行），每日汇总在 `mok_affiliate_usage_rebate_days` 表，迁移是 `mok_002_affiliate_usage_rebates.sql`。
+  - 管理端：`GET` / `PUT /api/v1/mok/admin/affiliate-rebate-mode`，`PUT` 的请求体是 `{"mode": "usage"}`，会记入操作审计。
+  - 用户端的 `GET /api/v1/mok/affiliate/rebate-tiers` 多返回一个 `rebate_mode` 字段。
+- **代码位置**：
+  - 后端：结算逻辑在 `backend/internal/service/affiliate_usage_rebate_mok.go`，SQL 在 `backend/internal/repository/affiliate_usage_rebate_repo_mok.go`，接口在 `backend/internal/mok/affiliate_mode_handler.go`。
+  - 前端：`frontend/src/mok/affiliate/AffiliateRebateModeSettings.vue`、`AffiliateUserPanel.vue`，接口封装在 `frontend/src/mok/api/affiliateMode.ts`，页面文案改写在 `frontend/src/mok/i18n/affiliateUsageWording.ts`。

@@ -1,21 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
+import { i18n } from '@/i18n'
 import upstreamEn from '@/i18n/locales/en'
 import upstreamZh from '@/i18n/locales/zh'
+import { setAffiliateUsageWording } from '../i18n'
+import affiliateUsageWording from '../i18n/affiliateUsageWording'
 import en from '../i18n/en'
 import zh from '../i18n/zh'
 
 // Upstream's locale completeness test only knows upstream locale files, so fork code
 // references its messages through mt()/mokKey() and this test checks those keys instead.
 
-function flattenLeaves(value: unknown, prefix = ''): Record<string, unknown> {
+function flattenLeaves(value: unknown, prefix = '', leaves: Record<string, unknown> = {}): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return prefix ? { [prefix]: value } : {}
+    if (prefix) leaves[prefix] = value
+    return leaves
   }
-  return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>(
-    (acc, [key, child]) => ({ ...acc, ...flattenLeaves(child, prefix ? `${prefix}.${key}` : key) }),
-    {}
-  )
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    flattenLeaves(child, prefix ? `${prefix}.${key}` : key, leaves)
+  }
+  return leaves
 }
 
 function referencedKeys(): string[] {
@@ -58,5 +62,43 @@ describe('fork locale messages', () => {
     expect(Object.keys(zh)).toEqual(['mok'])
     expect('mok' in upstreamEn).toBe(false)
     expect('mok' in upstreamZh).toBe(false)
+  })
+})
+
+describe('affiliate usage wording', () => {
+  const upstream: Record<string, Record<string, unknown>> = { en: upstreamEn, zh: upstreamZh }
+  const placeholders = (text: unknown) => [...String(text).matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
+
+  it('rewords the same keys in English and Chinese', () => {
+    expect(Object.keys(affiliateUsageWording).sort()).toEqual(['en', 'zh'])
+    expect(Object.keys(flattenLeaves(affiliateUsageWording.zh)).sort()).toEqual(
+      Object.keys(flattenLeaves(affiliateUsageWording.en)).sort()
+    )
+  })
+
+  it('only rewords upstream sentences that still exist, keeping their placeholders', () => {
+    for (const [locale, wording] of Object.entries(affiliateUsageWording)) {
+      const upstreamLeaves = flattenLeaves(upstream[locale])
+      for (const [key, text] of Object.entries(flattenLeaves(wording))) {
+        expect(key in upstreamLeaves, `${locale}: ${key}`).toBe(true)
+        expect(placeholders(text), `${locale}: ${key}`).toEqual(placeholders(upstreamLeaves[key]))
+      }
+    }
+  })
+
+  it('swaps the upstream sentences in and out', () => {
+    i18n.global.setLocaleMessage('en', upstreamEn as any)
+    i18n.global.locale.value = 'en'
+    const key = 'affiliate.tips.line2'
+    const upstreamText = i18n.global.t(key, { rate: '10%' })
+
+    setAffiliateUsageWording(true)
+    const reworded = i18n.global.t(key, { rate: '10%' })
+    expect(reworded).not.toBe(upstreamText)
+    expect(reworded).toContain('10%')
+
+    setAffiliateUsageWording(true)
+    setAffiliateUsageWording(false)
+    expect(i18n.global.t(key, { rate: '10%' })).toBe(upstreamText)
   })
 })

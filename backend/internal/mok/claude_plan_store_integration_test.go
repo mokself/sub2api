@@ -4,49 +4,14 @@ package mok
 
 import (
 	"context"
-	"database/sql"
-	"os"
-	"os/exec"
 	"testing"
 	"time"
 
-	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
-
-// openMigratedDB starts PostgreSQL in Docker and applies every embedded migration,
-// upstream's and the fork's, the same way the server does at startup.
-func openMigratedDB(t *testing.T) *sql.DB {
-	t.Helper()
-	ctx := context.Background()
-	if exec.CommandContext(ctx, "docker", "info").Run() != nil {
-		if os.Getenv("CI") != "" {
-			t.Fatal("docker is not available (CI=true)")
-		}
-		t.Skip("docker is not available; start Docker to run this test")
-	}
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("sub2api_mok_test"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-
-	dsn, err := container.ConnectionString(ctx, "sslmode=disable", "TimeZone=UTC")
-	require.NoError(t, err)
-	db, err := sql.Open("postgres", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	require.NoError(t, repository.ApplyMigrations(ctx, db))
-	return db
-}
 
 func TestClaudePlanStoreRoundTrip(t *testing.T) {
 	ctx := context.Background()

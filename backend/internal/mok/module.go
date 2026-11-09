@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
@@ -19,6 +20,7 @@ import (
 var ProviderSet = wire.NewSet(
 	NewClaudePlanStore,
 	NewClaudePlanService,
+	service.NewMokAffiliateUsageRebateService,
 	NewModule,
 )
 
@@ -33,36 +35,68 @@ var ServerProviderSet = wire.NewSet(
 	ProviderSet,
 )
 
-// ProvideHTTPServer wraps server.ProvideHTTPServer. The Module parameter only makes
-// wire build the fork module, and thereby register its routes, before the server.
-func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, _ *Module) *http.Server {
-	return server.ProvideHTTPServer(cfg, router)
+// ProvideHTTPServer wraps server.ProvideHTTPServer. Taking the Module makes wire build the
+// fork module, and thereby register its routes, before the server. The fork's background
+// jobs stop when main shuts the server down gracefully.
+func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, m *Module) *http.Server {
+	srv := server.ProvideHTTPServer(cfg, router)
+	srv.RegisterOnShutdown(m.Stop)
+	return srv
 }
 
 // Module is the fork's root object. Building it registers the fork's HTTP routes on
-// the router upstream has already set up.
+// the router upstream has already set up and starts the fork's background jobs.
 type Module struct {
-	ClaudePlan *ClaudePlanService
+	ClaudePlan           *ClaudePlanService
+	AffiliateUsageRebate *service.MokAffiliateUsageRebateService
+}
+
+// Stop ends the fork's background jobs.
+func (m *Module) Stop() {
+	if m != nil {
+		m.AffiliateUsageRebate.Stop()
+	}
 }
 
 // NewModule registers the fork routes. Admin routes get the same guards as upstream's
-// /api/v1/admin group, plus a refusal of restricted admin API keys.
+// /api/v1/admin group plus a refusal of restricted admin API keys; user routes get the
+// guards of upstream's authenticated user routes.
 func NewModule(
 	r *gin.Engine,
 	adminAuth middleware.AdminAuthMiddleware,
+	jwtAuth middleware.JWTAuthMiddleware,
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
+	affiliateService *service.AffiliateService,
+	redisClient *redis.Client,
 	claudePlan *ClaudePlanService,
+	affiliateUsageRebate *service.MokAffiliateUsageRebateService,
 ) *Module {
+	panelRateLimiter := middleware.NewPanelRateLimiter(redisClient, settingService)
+
 	admin := r.Group("/api/v1/mok/admin")
 	admin.Use(
 		gin.HandlerFunc(adminAuth),
+		panelRateLimiter.Global(),
 		gin.HandlerFunc(auditLog),
 		middleware.AdminComplianceGuard(settingService),
 		rejectRestrictedAdminKeys,
 	)
+
+	user := r.Group("/api/v1/mok")
+	user.Use(
+		gin.HandlerFunc(jwtAuth),
+		middleware.BackendModeUserGuard(settingService),
+		panelRateLimiter.Global(),
+		gin.HandlerFunc(auditLog),
+	)
+
 	registerClaudePlanRoutes(admin, claudePlan)
-	return &Module{ClaudePlan: claudePlan}
+	registerAffiliateTierRoutes(admin, user, settingService, affiliateService)
+	registerAffiliateModeRoutes(admin, affiliateUsageRebate)
+
+	affiliateUsageRebate.Start()
+	return &Module{ClaudePlan: claudePlan, AffiliateUsageRebate: affiliateUsageRebate}
 }
 
 // rejectRestrictedAdminKeys keeps scoped admin API keys out. Fork routes take raw

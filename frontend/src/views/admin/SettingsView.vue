@@ -7570,6 +7570,8 @@
                 </p>
               </div>
 
+              <MokAffiliateSettings /> <!-- [mok] affiliate rebate mode and tiers, see FORK.md -->
+
               <!-- 专属用户管理 -->
               <div class="border-t border-gray-100 pt-6 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">

@@ -285,7 +285,7 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 		AffQuota:                   summary.AffQuota,
 		AffFrozenQuota:             summary.AffFrozenQuota,
 		AffHistoryQuota:            summary.AffHistoryQuota,
-		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
+		EffectiveRebateRatePercent: s.mokEffectiveRebateRatePercent(ctx, summary), // [mok] was resolveRebateRatePercent; tier-aware, see FORK.md
 		Invitees:                   invitees,
 	}, nil
 }
@@ -374,6 +374,9 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 	}
 
 	rebateRatePercent := s.resolveRebateRatePercent(ctx, inviterSummary)
+	if rebateRatePercent, err = s.mokTieredRebateRatePercent(ctx, inviterSummary, rebateRatePercent, baseRechargeAmount, sourceOrderID); err != nil { // [mok] tiered rate, see FORK.md
+		return 0, err
+	}
 	rebate := roundTo(baseRechargeAmount*(rebateRatePercent/100), 8)
 	if rebate <= 0 {
 		return 0, nil
@@ -663,6 +666,7 @@ func (s *AffiliateService) AdminGetUserOverview(ctx context.Context, userID int6
 	if overview != nil {
 		if !overview.RebateRateCustom {
 			overview.RebateRatePercent = s.globalRebateRatePercent(ctx)
+			overview.RebateRatePercent = s.mokTieredDisplayRatePercent(ctx, userID, overview.RebateRatePercent) // [mok] tiered rate, see FORK.md
 		}
 		overview.RebateRatePercent = clampAffiliateRebateRate(overview.RebateRatePercent)
 	}
