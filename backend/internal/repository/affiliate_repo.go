@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	affiliateCodeLength      = 12
+	affiliateCodeLength      = 4 // [mok] upstream: 12; see FORK.md
 	affiliateCodeMaxAttempts = 12
 )
 

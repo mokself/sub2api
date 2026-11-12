@@ -49,6 +49,7 @@ git grep -n "\[mok\]"
 | `frontend/src/main.ts` | 第一行导入 `installMok`；在 `await initI18n()` 之后调用 `await installMok(app)` | fork 前端入口 |
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
 | `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent` | 阶梯返利的计算和比例展示；消耗返利模式下 `mokTieredRebateRatePercent` 返回 0，充值不再返利。见第 11 节 |
+| `backend/internal/repository/affiliate_repo.go` | 常量 `affiliateCodeLength` 从 12 改为 4 | 系统生成的邀请码长度，见第 11 节 |
 | `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片 |
 | `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片和消耗返利卡片；消耗返利模式下改写页面上讲充值返利的两句话 |
 
@@ -510,3 +511,19 @@ docker compose up -d
 - **代码位置**：
   - 后端：结算逻辑在 `backend/internal/service/affiliate_usage_rebate_mok.go`，SQL 在 `backend/internal/repository/affiliate_usage_rebate_repo_mok.go`，接口在 `backend/internal/mok/affiliate_mode_handler.go`。
   - 前端：`frontend/src/mok/affiliate/` 下的 `AffiliateRebateModeSettings.vue`（管理端卡片）、`AffiliateUsageRebateRecords.vue`（两端共用的明细弹窗）、`AffiliateUserPanel.vue`（用户端卡片）；接口封装在 `frontend/src/mok/api/affiliateMode.ts` 和 `affiliateUsageRebates.ts`；页面文案改写在 `frontend/src/mok/i18n/affiliateUsageWording.ts`。
+
+### 4 位邀请码（2026-11-12）
+
+系统生成的邀请码（邀请返利页上的那串码）从 12 位改成 4 位，方便口头告诉别人或手动输入。
+
+- **生成规则**：字符集不变，仍是 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`（没有容易看错的 I、O、0、1），4 位一共约 105 万个码。新注册用户和管理员「重置」出来的邀请码都是 4 位。管理员手动设置的专属邀请码不受影响，仍然可以是 4–32 位。
+- **已有用户**：迁移 `mok_004_affiliate_codes_4_chars.sql` 在升级后第一次启动时执行，把系统生成的旧码全部换成随机的 4 位码，互不重复。下面两种不动：
+  - 管理员手动设置过的专属邀请码；
+  - 本来就是 4 位的码。
+- **影响**：
+  - 换码之后，之前发出去的旧邀请码和旧邀请链接全部失效，需要用户重新分享新的。
+  - 邀请关系（谁邀请了谁）按用户 ID 记录，不受影响，已有的返利照常。
+  - 访客浏览器里记住的旧邀请码，注册时绑定不上邀请人，注册本身不受影响。
+- **容量**：码用得越多，生成新码时撞上已有码的机会越大，系统会重试最多 12 次。用户数在十几万以内基本不会重试失败；到几十万以上应该把长度调大。迁移时如果用户数超过可用的码数，多出来的用户保留旧码。
+- **同步上游时**：`affiliate_repo.go` 里那一行如果冲突，保留 4。`backend/internal/repository/affiliate_code_mok_test.go` 会在生成的码不是 4 位时失败，也会在上游把绑定校验的最小长度调到 4 以上时失败。
+- **代码位置**：上游文件 `backend/internal/repository/affiliate_repo.go` 的一行常量；迁移 `backend/migrations/mok_004_affiliate_codes_4_chars.sql`；测试 `backend/internal/repository/affiliate_code_mok_test.go` 和 `backend/internal/mok/affiliate_codes_integration_test.go`。
