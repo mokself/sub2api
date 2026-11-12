@@ -13,10 +13,15 @@ const { getAffiliateRebateMode, setAffiliateRebateMode, showSuccess, showError }
 }))
 
 vi.mock('../../api/affiliateMode', () => ({ getAffiliateRebateMode, setAffiliateRebateMode }))
+vi.mock('../../api/affiliateUsageRebates', () => ({
+  listAffiliateUsageRebates: vi.fn(),
+  listMyAffiliateUsageRebates: vi.fn()
+}))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess, showError }) }))
 vi.mock('@/utils/format', () => ({
   formatCurrency: (amount: number) => `$${amount}`,
-  formatDateTime: (value: string) => `[${value}]`
+  formatDateTime: (value: string) => `[${value}]`,
+  formatDateTimeToMinute: (value: string) => `[minute ${value}]`
 }))
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -45,13 +50,22 @@ const ConfirmDialogStub = defineComponent({
   }
 })
 
+const RecordsStub = defineComponent({
+  props: { show: Boolean, scope: String },
+  emits: ['close'],
+  setup(props, { emit }) {
+    return () =>
+      props.show ? h('button', { 'data-testid': 'records', onClick: () => emit('close') }, `records:${props.scope}`) : null
+  }
+})
+
 function modeStatus(patch: Partial<AffiliateRebateModeStatus> = {}): AffiliateRebateModeStatus {
   return { mode: 'recharge', recent_days: [], ...patch }
 }
 
 async function mountLoaded() {
   const wrapper = mount(AffiliateRebateModeSettings, {
-    global: { stubs: { ConfirmDialog: ConfirmDialogStub } }
+    global: { stubs: { ConfirmDialog: ConfirmDialogStub, AffiliateUsageRebateRecords: RecordsStub } }
   })
   await flushPromises()
   return wrapper
@@ -74,6 +88,8 @@ describe('AffiliateRebateModeSettings', () => {
     expect(pressed(wrapper, 'recharge')).toBe('true')
     expect(pressed(wrapper, 'usage')).toBe('false')
     expect(wrapper.find('[data-testid="mok-affiliate-mode-window"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mok-affiliate-mode-settled-until"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mok-affiliate-mode-records"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('mok.affiliateMode.recentDays')
   })
 
@@ -94,6 +110,7 @@ describe('AffiliateRebateModeSettings', () => {
     expect(wrapper.get('[data-testid="mok-affiliate-mode-window"]').text()).toBe(
       'mok.affiliateMode.since {"time":"[2026-11-09T08:00:00Z]"}'
     )
+    expect(wrapper.text()).toContain('mok.affiliateMode.settleHint')
     expect(wrapper.text()).toContain('mok.affiliateMode.noDays')
     expect(wrapper.find('[data-testid="confirm"]').exists()).toBe(false)
   })
@@ -124,31 +141,38 @@ describe('AffiliateRebateModeSettings', () => {
     expect(pressed(wrapper, 'recharge')).toBe('true')
   })
 
-  it('lists settled days, including skipped ones, and the end of the usage window', async () => {
+  it('sums the settled hours per day and marks days with skipped hours', async () => {
+    getAffiliateRebateMode.mockResolvedValue(
+      modeStatus({
+        mode: 'usage',
+        usage_since: '2026-11-01T00:00:00Z',
+        settled_until: '2026-11-07T15:00:00Z',
+        recent_days: [
+          { day: '2026-11-07', period_count: 15, skipped_count: 0, invitee_count: 3, usage_total: 120.5, rebate_total: 12.05 },
+          { day: '2026-11-06', period_count: 24, skipped_count: 5, invitee_count: 1, usage_total: 10, rebate_total: 1 }
+        ]
+      })
+    )
+    const wrapper = await mountLoaded()
+
+    expect(wrapper.get('[data-testid="mok-affiliate-mode-settled-until"]').text()).toBe(
+      'mok.affiliateMode.settledUntil {"time":"[minute 2026-11-07T15:00:00Z]"}'
+    )
+    const rows = wrapper.findAll('[data-testid="mok-affiliate-mode-day"]')
+    expect(rows.map((row) => row.findAll('td').map((cell) => cell.text()))).toEqual([
+      ['2026-11-07', '3', '$120.5', '$12.05'],
+      ['2026-11-06 mok.affiliateMode.skippedPeriods {"count":5}', '1', '$10', '$1']
+    ])
+    expect(rows[0].find('[data-testid="mok-affiliate-mode-skipped"]').exists()).toBe(false)
+  })
+
+  it('keeps the settled days and the end of the usage window after switching back', async () => {
     getAffiliateRebateMode.mockResolvedValue(
       modeStatus({
         usage_since: '2026-11-01T00:00:00Z',
         usage_until: '2026-11-08T00:00:00Z',
         recent_days: [
-          {
-            day: '2026-11-07',
-            window_start: '',
-            window_end: '',
-            invitee_count: 3,
-            usage_total: 120.5,
-            rebate_total: 12.05,
-            settled_at: ''
-          },
-          {
-            day: '2026-11-06',
-            window_start: '',
-            window_end: '',
-            invitee_count: 0,
-            usage_total: 0,
-            rebate_total: 0,
-            skipped_reason: 'affiliate_disabled',
-            settled_at: ''
-          }
+          { day: '2026-11-07', period_count: 24, skipped_count: 0, invitee_count: 3, usage_total: 120.5, rebate_total: 12.05 }
         ]
       })
     )
@@ -157,11 +181,20 @@ describe('AffiliateRebateModeSettings', () => {
     expect(wrapper.get('[data-testid="mok-affiliate-mode-window"]').text()).toBe(
       'mok.affiliateMode.until {"time":"[2026-11-08T00:00:00Z]"}'
     )
-    const rows = wrapper.findAll('[data-testid="mok-affiliate-mode-day"]')
-    expect(rows.map((row) => row.findAll('td').map((cell) => cell.text()))).toEqual([
-      ['2026-11-07', '3', '$120.5', '$12.05'],
-      ['2026-11-06', 'mok.affiliateMode.skipped.affiliate_disabled']
-    ])
+    expect(wrapper.text()).not.toContain('mok.affiliateMode.settleHint')
+    expect(wrapper.findAll('[data-testid="mok-affiliate-mode-day"]')).toHaveLength(1)
+  })
+
+  it('opens the records of every inviter', async () => {
+    getAffiliateRebateMode.mockResolvedValue(modeStatus({ mode: 'usage', usage_since: '2026-11-01T00:00:00Z' }))
+    const wrapper = await mountLoaded()
+    expect(wrapper.find('[data-testid="records"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="mok-affiliate-mode-records"]').trigger('click')
+    expect(wrapper.get('[data-testid="records"]').text()).toBe('records:admin')
+
+    await wrapper.get('[data-testid="records"]').trigger('click')
+    expect(wrapper.find('[data-testid="records"]').exists()).toBe(false)
   })
 
   it('offers a retry when the mode cannot be loaded', async () => {

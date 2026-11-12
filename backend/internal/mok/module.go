@@ -93,7 +93,7 @@ func NewModule(
 
 	registerClaudePlanRoutes(admin, claudePlan)
 	registerAffiliateTierRoutes(admin, user, settingService, affiliateService)
-	registerAffiliateModeRoutes(admin, affiliateUsageRebate)
+	registerAffiliateModeRoutes(admin, user, affiliateUsageRebate)
 
 	affiliateUsageRebate.Start()
 	return &Module{ClaudePlan: claudePlan, AffiliateUsageRebate: affiliateUsageRebate}

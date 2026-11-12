@@ -47,20 +47,21 @@ export default {
         baseRow: 'Below {amount}',
         tierRow: 'From {amount}',
         current: 'Current',
-        usageMode: 'Rebates follow the daily balance usage of your invitees and are settled the next day; tiers still follow recharges.'
+        usageMode: 'Usage rebates use the rate of your current tier as well; tiers still follow recharges.'
       }
     },
     affiliateMode: {
       title: 'Rebate basis',
       description:
-        'Recharge: invitees earn their inviter a rebate whenever they recharge (the original behaviour). Usage: recharges earn nothing; instead, once a day, the balance usage of each invitee on the previous day is rebated, and usage within subscriptions does not count. Both use the exclusive rate, then the tiers, then the global rate, with tiers still based on recharges; the per-invitee cap, rebate duration and freeze period apply.',
+        'Recharge: invitees earn their inviter a rebate whenever they recharge (the original behaviour). Usage: recharges earn nothing; instead, once an hour, the balance usage of each invitee in the previous hour is rebated, and usage within subscriptions does not count. Both use the exclusive rate, then the tiers, then the global rate, with tiers still based on recharges; the per-invitee cap, rebate duration and freeze period apply.',
       recharge: 'Recharge',
       usage: 'Usage',
       since: 'Usage rebates started at {time}; balance usage from then on is settled.',
       until: 'Usage rebates stopped at {time}; usage before then is still settled.',
-      settleHint: 'Each day is settled after 0:30 the next day, with days in the server time zone.',
+      settleHint: 'Each hour is settled about 5 minutes after it ends, with hours on the clock of the server time zone.',
+      settledUntil: 'Settled up to {time}.',
       confirmTitle: 'Switch rebate basis',
-      confirmToUsage: 'After switching to usage, recharges earn no rebate and the balance usage of invitees from now on is settled daily. Switch?',
+      confirmToUsage: 'After switching to usage, recharges earn no rebate and the balance usage of invitees from now on is settled every hour. Switch?',
       confirmToRecharge: 'After switching back to recharge, usage from now on earns no rebate (earlier usage is still settled) and recharges earn rebates again. Switch?',
       confirm: 'Switch',
       cancel: 'Cancel',
@@ -68,16 +69,42 @@ export default {
       switchFailed: 'Could not switch the rebate basis',
       loadFailed: 'Could not load the rebate basis',
       retry: 'Retry',
-      recentDays: 'Recent settlements',
+      recentDays: 'Recent settlements (per day)',
+      viewRecords: 'View records',
+      skippedPeriods: '{count} hours without rebates: affiliate rebates were off',
       noDays: 'Nothing settled yet',
       columns: {
         day: 'Day',
         invitees: 'Invitees',
         usage: 'Usage',
         rebate: 'Rebate'
+      }
+    },
+    affiliateUsage: {
+      title: 'Usage rebate records',
+      adminHint: 'One record per invitee and settlement period, newest first. A period is usually an hour; the hour of a switch of the rebate basis is shorter.',
+      userHint: 'The hourly balance usage of the users you invited and the rebate it earned you, newest first.',
+      searchPlaceholder: 'Search inviter or invitee by email or username',
+      search: 'Search',
+      loadFailed: 'Could not load the records',
+      retry: 'Retry',
+      empty: 'Nothing settled yet',
+      noMatch: 'No matching records',
+      columns: {
+        period: 'Period',
+        inviter: 'Inviter',
+        invitee: 'Invitee',
+        usage: 'Usage',
+        rate: 'Rate',
+        rebate: 'Rebate'
       },
-      skipped: {
-        affiliate_disabled: 'Affiliate rebates were off; nothing paid'
+      user: {
+        title: 'Usage rebates',
+        usageOn: 'When the users you invited spend their balance, you earn a rebate at your rebate rate, settled every hour.',
+        usageOff: 'Rebates now follow recharges; the records of earlier usage rebates are kept here.',
+        latest: 'Latest: {period}, rebate {amount}',
+        none: 'Nothing settled yet.',
+        view: 'View records ({count})'
       }
     }
   }

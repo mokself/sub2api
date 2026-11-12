@@ -46,9 +46,21 @@
       <p v-if="status.mode === 'usage'" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
         {{ mt('affiliateMode.settleHint') }}
       </p>
+      <p
+        v-if="status.settled_until"
+        class="mt-1 text-xs text-gray-400 dark:text-gray-500"
+        data-testid="mok-affiliate-mode-settled-until"
+      >
+        {{ mt('affiliateMode.settledUntil', { time: formatDateTimeToMinute(status.settled_until) }) }}
+      </p>
 
       <div v-if="status.mode === 'usage' || status.recent_days.length > 0" class="mt-4">
-        <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ mt('affiliateMode.recentDays') }}</p>
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ mt('affiliateMode.recentDays') }}</p>
+          <button type="button" class="btn btn-secondary btn-sm" data-testid="mok-affiliate-mode-records" @click="recordsOpen = true">
+            {{ mt('affiliateMode.viewRecords') }}
+          </button>
+        </div>
         <p
           v-if="status.recent_days.length === 0"
           class="mt-2 rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
@@ -67,17 +79,19 @@
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
               <tr v-for="day in status.recent_days" :key="day.day" data-testid="mok-affiliate-mode-day">
-                <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ day.day }}</td>
-                <template v-if="day.skipped_reason">
-                  <td colspan="3" class="px-3 py-2 text-right text-xs text-amber-600 dark:text-amber-400">
-                    {{ skippedText(day.skipped_reason) }}
-                  </td>
-                </template>
-                <template v-else>
-                  <td class="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{{ day.invitee_count }}</td>
-                  <td class="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{{ formatCurrency(day.usage_total) }}</td>
-                  <td class="px-3 py-2 text-right tabular-nums font-medium text-gray-900 dark:text-white">{{ formatCurrency(day.rebate_total) }}</td>
-                </template>
+                <td class="px-3 py-2 text-gray-700 dark:text-gray-300">
+                  {{ day.day }}
+                  <span
+                    v-if="day.skipped_count > 0"
+                    class="ml-2 text-xs text-amber-600 dark:text-amber-400"
+                    data-testid="mok-affiliate-mode-skipped"
+                  >
+                    {{ mt('affiliateMode.skippedPeriods', { count: day.skipped_count }) }}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{{ day.invitee_count }}</td>
+                <td class="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{{ formatCurrency(day.usage_total) }}</td>
+                <td class="px-3 py-2 text-right tabular-nums font-medium text-gray-900 dark:text-white">{{ formatCurrency(day.rebate_total) }}</td>
               </tr>
             </tbody>
           </table>
@@ -94,6 +108,7 @@
       @confirm="confirmSwitch"
       @cancel="pendingMode = null"
     />
+    <AffiliateUsageRebateRecords :show="recordsOpen" scope="admin" @close="recordsOpen = false" />
   </div>
 </template>
 
@@ -102,7 +117,7 @@ import { computed, onMounted, ref } from 'vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { formatCurrency, formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateTime, formatDateTimeToMinute } from '@/utils/format'
 import {
   getAffiliateRebateMode,
   setAffiliateRebateMode,
@@ -110,6 +125,7 @@ import {
   type AffiliateRebateModeStatus
 } from '../api/affiliateMode'
 import { useMokI18n } from '../i18n'
+import AffiliateUsageRebateRecords from './AffiliateUsageRebateRecords.vue'
 
 const { mt } = useMokI18n()
 const appStore = useAppStore()
@@ -119,6 +135,7 @@ const loading = ref(true)
 const switching = ref(false)
 const status = ref<AffiliateRebateModeStatus | null>(null)
 const pendingMode = ref<AffiliateRebateMode | null>(null)
+const recordsOpen = ref(false)
 
 const windowText = computed(() => {
   const s = status.value
@@ -131,10 +148,6 @@ const windowText = computed(() => {
   }
   return ''
 })
-
-function skippedText(reason: string): string {
-  return reason === 'affiliate_disabled' ? mt('affiliateMode.skipped.affiliate_disabled') : reason
-}
 
 async function load(): Promise<void> {
   loading.value = true

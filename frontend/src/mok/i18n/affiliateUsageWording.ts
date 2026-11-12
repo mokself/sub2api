@@ -6,20 +6,20 @@ export default {
   zh: {
     affiliate: {
       stats: {
-        rebateRateHint: '被邀请用户每天消耗余额后，你按这个比例获得返利（次日结算）'
+        rebateRateHint: '被邀请用户消耗余额后，你按这个比例获得返利（每小时结算）'
       },
       tips: {
-        line2: '被邀请用户使用余额消费后，你可获得消费额 {rate} 的返利，每日结算一次。'
+        line2: '被邀请用户使用余额消费后，你可获得消费额 {rate} 的返利，每小时结算一次。'
       }
     }
   },
   en: {
     affiliate: {
       stats: {
-        rebateRateHint: 'The share of the daily balance usage of your invitees you earn, settled the next day'
+        rebateRateHint: 'The share of the balance usage of your invitees you earn, settled every hour'
       },
       tips: {
-        line2: 'When invitees spend their balance, you receive {rate} of it as rebate quota, settled daily.'
+        line2: 'When invitees spend their balance, you receive {rate} of it as rebate quota, settled every hour.'
       }
     }
   }

@@ -1,8 +1,9 @@
 <template>
   <!--
     Sits on the user's affiliate page (views/user/AffiliateView.vue). Rewords the upstream
-    sentences there in usage mode and shows the tier card, which is hidden without tiers or
-    for exclusive rates.
+    sentences there in usage mode and shows two cards: the tier card, hidden without tiers
+    or for exclusive rates, and the usage rebate card, shown in usage mode and to inviters
+    who have usage rebate records.
   -->
   <div v-if="status && status.enabled && !status.exclusive" class="card p-6" data-testid="mok-affiliate-tier-progress">
     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -72,23 +73,56 @@
       </ul>
     </div>
   </div>
+  <div v-if="showUsageCard" class="card p-6" data-testid="mok-affiliate-usage-card">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="min-w-0">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ mt('affiliateUsage.user.title') }}</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+          {{ status?.rebate_mode === 'usage' ? mt('affiliateUsage.user.usageOn') : mt('affiliateUsage.user.usageOff') }}
+        </p>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300" data-testid="mok-affiliate-usage-latest">
+          {{
+            latestRecord
+              ? mt('affiliateUsage.user.latest', {
+                  period: formatRebatePeriod(latestRecord.period_start, latestRecord.period_end),
+                  amount: formatCurrency(latestRecord.rebate_amount)
+                })
+              : mt('affiliateUsage.user.none')
+          }}
+        </p>
+      </div>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        :disabled="recordTotal === 0"
+        data-testid="mok-affiliate-usage-open"
+        @click="recordsOpen = true"
+      >
+        {{ mt('affiliateUsage.user.view', { count: recordTotal }) }}
+      </button>
+    </div>
+  </div>
+  <AffiliateUsageRebateRecords :show="recordsOpen" scope="user" @close="recordsOpen = false" />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { formatCurrency } from '@/utils/format'
 import { getAffiliateTierStatus, type AffiliateTierStatus } from '../api/affiliateTiers'
+import { listMyAffiliateUsageRebates, type AffiliateUsageRebateRecord } from '../api/affiliateUsageRebates'
 import { setAffiliateUsageWording, useMokI18n } from '../i18n'
+import AffiliateUsageRebateRecords from './AffiliateUsageRebateRecords.vue'
 import { progressToNextTier } from './tiers'
+import { formatRebatePeriod, formatRebateRate as formatRate } from './usageRebate'
 
 const { mt } = useMokI18n()
 const status = ref<AffiliateTierStatus | null>(null)
+const latestRecord = ref<AffiliateUsageRebateRecord | null>(null)
+const recordTotal = ref(0)
+const recordsOpen = ref(false)
 
-// Same formatting as the rebate rate card of the affiliate page: 20.00 -> "20", 12.50 -> "12.5".
-function formatRate(rate: number): string {
-  const rounded = Math.round(rate * 100) / 100
-  return String(rounded)
-}
+// After a switch back to recharge mode the card stays for inviters who have records.
+const showUsageCard = computed(() => status.value?.rebate_mode === 'usage' || recordTotal.value > 0)
 
 const progress = computed(() => {
   const s = status.value
@@ -115,12 +149,27 @@ const ladder = computed(() => {
   ]
 })
 
-onMounted(async () => {
+async function loadStatus(): Promise<void> {
   try {
     status.value = await getAffiliateTierStatus()
     setAffiliateUsageWording(status.value.rebate_mode === 'usage')
   } catch (error) {
     console.error('Failed to load affiliate tier status:', error)
   }
+}
+
+async function loadLatestRecord(): Promise<void> {
+  try {
+    const result = await listMyAffiliateUsageRebates({ page: 1, page_size: 1 })
+    latestRecord.value = result.items?.[0] ?? null
+    recordTotal.value = result.total ?? 0
+  } catch (error) {
+    console.error('Failed to load affiliate usage rebates:', error)
+  }
+}
+
+onMounted(() => {
+  void loadStatus()
+  void loadLatestRecord()
 })
 </script>

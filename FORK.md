@@ -49,8 +49,8 @@ git grep -n "\[mok\]"
 | `frontend/src/main.ts` | 第一行导入 `installMok`；在 `await initI18n()` 之后调用 `await installMok(app)` | fork 前端入口 |
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
 | `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent` | 阶梯返利的计算和比例展示；消耗返利模式下 `mokTieredRebateRatePercent` 返回 0，充值不再返利。见第 11 节 |
-| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」和「阶梯返利」两张卡片 |
-| `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片；消耗返利模式下改写页面上讲充值返利的两句话 |
+| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片 |
+| `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片和消耗返利卡片；消耗返利模式下改写页面上讲充值返利的两句话 |
 
 ## 3. 先看能不能零代码
 
@@ -468,34 +468,45 @@ docker compose up -d
   - 后端：计算在 `backend/internal/service/affiliate_service_mok.go`，累计额 SQL 在 `backend/internal/repository/affiliate_repo_mok.go`，接口在 `backend/internal/mok/affiliate_tiers_handler.go`。
   - 前端：组件在 `frontend/src/mok/affiliate/`，接口封装在 `frontend/src/mok/api/affiliateTiers.ts`。
 
-### 消耗返利（2026-11-09）
+### 消耗返利（2026-11-09；2026-11-12 改为每小时结算并增加明细）
 
 返利方式可以在「充值返利」和「消耗返利」之间切换，在后台「系统设置 → 功能开关 → 邀请返利」的「返利方式」卡片里操作，切换前会弹窗确认。默认是充值返利，和上游一样。
 
 - **充值返利**：被邀请人充值时按比例返利，即上游原有方式，叠加上面的阶梯返利。
 - **消耗返利**：
-  - 充值不再返利；每天结算一次，按每个被邀请人前一天的**余额消耗**给邀请人返利。
+  - 充值不再返利；每小时结算一次，按每个被邀请人上一个小时的**余额消耗**给邀请人返利。
   - 余额消耗 = `usage_logs` 里计费方式为余额（`billing_type = 0`）的 `actual_cost` 之和；订阅套餐内的用量不算。
   - 比例和充值返利一样按「专属比例 → 阶梯 → 全局比例」确定，阶梯仍按累计充值（推广额）定档，按结算时的档位计算。
   - 单人返利上限、返利有效期（从被邀请人绑定邀请关系时算起）、冻结期照常生效；返利额度记进上游的 `aff_quota` 等字段，和充值返利共用提现、转余额流程。
-  - 结算时邀请返利功能是关闭的，那一天会记为「已跳过」，不返利，之后再打开也不补。
+  - 某个小时结算时邀请返利功能是关闭的，这个小时会记为「已跳过」，不返利，之后再打开也不补。
 - **结算时间**：
-  - 日期按服务器时区（`TZ`）划分。每天 0:30 之后结算前一天；后台任务每 5 分钟检查一次，启动 1 分钟后第一次检查。
-  - 服务停机期间漏掉的日子会在恢复后补结算；每次检查最多处理 62 天，更多的积压在后面几次检查里接着补。
+  - 结算时段是服务器时区（`TZ`）的整点小时。每个整点过 5 分钟后结算上一个小时；后台任务每分钟检查一次，启动 1 分钟后第一次检查。
+  - 切换返利方式的那个小时不满一小时：从切换时刻到下一个整点，或从整点到切换时刻。
+  - 服务停机期间漏掉的小时会在恢复后补结算；每次检查最多处理 744 个小时（31 天），更多的积压在后面几次检查里接着补。
   - 多实例部署时用 Redis 锁（`mok:affiliate_usage_rebate`）保证同一时间只有一个实例在结算。
 - **切换的边界**：
-  - 切到消耗返利时记下切换时刻（`mok_affiliate_usage_rebate_since`），只结算这之后的消耗；切换当天只算切换时刻之后的部分。
-  - 切回充值返利时记下结束时刻（`mok_affiliate_usage_rebate_until`），结束之前的消耗照常在次日结算完，之后的不再结算。
-  - 再次切到消耗返利时，起点重新记为新的切换时刻，结束时刻清空。
-- **不会重复返利**：每个「被邀请人 + 日期」只结算一次。结算记录和返利额度在同一个事务里写入，中途失败会整体回滚，下次重试。
-- **展示**：
-  - 管理端「返利方式」卡片显示当前方式、起止时刻和最近 14 天的结算汇总（被邀请人数、消耗额、返利额）。
-  - 用户的邀请返利页：「我的返利比例」下的说明和「使用说明」第 2 条改为讲消耗返利；阶梯进度卡片里加一句说明。
+  - 切到消耗返利时记下切换时刻（`mok_affiliate_usage_rebate_since`），只结算这之后的消耗。
+  - 切回充值返利时记下结束时刻（`mok_affiliate_usage_rebate_until`），结束之前的消耗照常在下一次结算时结算完，之后的不再结算。
+  - 再次切到消耗返利时，起点重新记为新的切换时刻，结束时刻清空。切回充值返利后，如果没等最后一个时段结算完（最长约 1 小时 5 分钟）就又切到消耗返利，那段还没结算的消耗不会再结算。
+- **不会重复返利**：每个「被邀请人 + 时段」只结算一次。结算记录和返利额度在同一个事务里写入，中途失败会整体回滚，下次重试。
+- **明细和展示**：
+  - 管理端「返利方式」卡片：当前方式、起止时刻、已结算到的时刻，最近 14 天按天汇总（被邀请人数、消耗额、返利额）。点「查看明细」打开全部结算记录：时段、邀请人、被邀请人、消耗、比例、返利，可以按邮箱或用户名搜索。
+  - 用户的邀请返利页：多一张「消耗返利」卡片，显示最近一笔，并能打开自己的明细；被邀请人只显示打码后的邮箱。消耗返利模式下这张卡片一直显示；切回充值返利后，有过记录的用户仍然能看到。
+  - 用户的邀请返利页上，「我的返利比例」下的说明和「使用说明」第 2 条改为讲消耗返利；阶梯进度卡片里加一句说明。
+  - 上游管理端的「返利记录」里，每条消耗返利也各占一行（订单相关的列显示 `-`）。
 - **存储与接口**：
   - 方式和起止时刻存在 `settings` 表的 `mok_affiliate_rebate_mode`（`recharge` / `usage`）、`mok_affiliate_usage_rebate_since`、`mok_affiliate_usage_rebate_until` 三个键里。
-  - 结算明细在 `mok_affiliate_usage_rebates` 表（每个被邀请人每天一行），每日汇总在 `mok_affiliate_usage_rebate_days` 表，迁移是 `mok_002_affiliate_usage_rebates.sql`。
-  - 管理端：`GET` / `PUT /api/v1/mok/admin/affiliate-rebate-mode`，`PUT` 的请求体是 `{"mode": "usage"}`，会记入操作审计。
-  - 用户端的 `GET /api/v1/mok/affiliate/rebate-tiers` 多返回一个 `rebate_mode` 字段。
+  - 结算明细在 `mok_affiliate_usage_rebate_items` 表（每个被邀请人每个时段一行），时段汇总在 `mok_affiliate_usage_rebate_periods` 表。迁移 `mok_003_affiliate_usage_rebate_periods.sql` 建这两张表，并把 `mok_002` 时期按天结算的记录搬过来，一天作为一个时段。
+  - `mok_002` 的两张表：`mok_affiliate_usage_rebate_days` 在 `mok_003` 里删除；`mok_affiliate_usage_rebates` 保留，里面只留「升级时某一天结算到一半」的记录，正常情况下是空的。按小时结算时会跳过这些被邀请人的那一天，避免再返一次。
+  - 管理端：
+    - `GET` / `PUT /api/v1/mok/admin/affiliate-rebate-mode`，`PUT` 的请求体是 `{"mode": "usage"}`，会记入操作审计；
+    - `GET /api/v1/mok/admin/affiliate-usage-rebates`，参数 `page`、`page_size`（最大 100）、`search`。
+  - 用户端：
+    - `GET /api/v1/mok/affiliate/usage-rebates`，参数 `page`、`page_size`，只返回自己作为邀请人的记录；
+    - `GET /api/v1/mok/affiliate/rebate-tiers` 多返回一个 `rebate_mode` 字段。
+- **升级注意**：
+  - 从按天结算的版本（`0.2.20-mok.2`、`0.2.21-mok.1`）升级时，`mok_003` 在启动时自动执行。按小时结算从最后一个已结算的日子结束处接着算，升级当天已经过去的小时会在启动后一次补齐。
+  - 升级后不要回滚到按天结算的旧镜像：旧版本找不到被删掉的 `mok_affiliate_usage_rebate_days` 表，消耗返利会停止结算并在日志里报错。这样设计是为了回滚后不会把已经按小时结算过的日子再按天返一次。
 - **代码位置**：
   - 后端：结算逻辑在 `backend/internal/service/affiliate_usage_rebate_mok.go`，SQL 在 `backend/internal/repository/affiliate_usage_rebate_repo_mok.go`，接口在 `backend/internal/mok/affiliate_mode_handler.go`。
-  - 前端：`frontend/src/mok/affiliate/AffiliateRebateModeSettings.vue`、`AffiliateUserPanel.vue`，接口封装在 `frontend/src/mok/api/affiliateMode.ts`，页面文案改写在 `frontend/src/mok/i18n/affiliateUsageWording.ts`。
+  - 前端：`frontend/src/mok/affiliate/` 下的 `AffiliateRebateModeSettings.vue`（管理端卡片）、`AffiliateUsageRebateRecords.vue`（两端共用的明细弹窗）、`AffiliateUserPanel.vue`（用户端卡片）；接口封装在 `frontend/src/mok/api/affiliateMode.ts` 和 `affiliateUsageRebates.ts`；页面文案改写在 `frontend/src/mok/i18n/affiliateUsageWording.ts`。
