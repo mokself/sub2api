@@ -1,10 +1,19 @@
 <template>
   <!--
     Sits on the user's affiliate page (views/user/AffiliateView.vue). Rewords the upstream
-    sentences there in usage mode and shows two cards: the tier card, hidden without tiers
-    or for exclusive rates, and the usage rebate card, shown in usage mode and to inviters
-    who have usage rebate records.
+    sentences there in usage mode and shows up to three cards: a notice when the feature is
+    not on for this user, the tier card, hidden without tiers or for exclusive rates, and
+    the usage rebate card, shown in usage mode and to inviters who have usage rebate records.
   -->
+  <div
+    v-if="notAllowed"
+    class="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/50 dark:bg-amber-900/20"
+    role="status"
+    data-testid="mok-affiliate-not-allowed"
+  >
+    <h3 class="text-base font-semibold text-amber-900 dark:text-amber-200">{{ mt('affiliateScope.notice.title') }}</h3>
+    <p class="mt-1 text-sm text-amber-800 dark:text-amber-300">{{ mt('affiliateScope.notice.body') }}</p>
+  </div>
   <div v-if="status && status.enabled && !status.exclusive" class="card p-6" data-testid="mok-affiliate-tier-progress">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0">
@@ -78,7 +87,7 @@
       <div class="min-w-0">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ mt('affiliateUsage.user.title') }}</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-          {{ status?.rebate_mode === 'usage' ? mt('affiliateUsage.user.usageOn') : mt('affiliateUsage.user.usageOff') }}
+          {{ usageCardHint }}
         </p>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-300" data-testid="mok-affiliate-usage-latest">
           {{
@@ -111,6 +120,7 @@ import { formatCurrency } from '@/utils/format'
 import { getAffiliateTierStatus, type AffiliateTierStatus } from '../api/affiliateTiers'
 import { listMyAffiliateUsageRebates, type AffiliateUsageRebateRecord } from '../api/affiliateUsageRebates'
 import { setAffiliateUsageWording, useMokI18n } from '../i18n'
+import { refreshAffiliateAccess } from './access'
 import AffiliateUsageRebateRecords from './AffiliateUsageRebateRecords.vue'
 import { progressToNextTier } from './tiers'
 import { formatRebatePeriod, formatRebateRate as formatRate } from './usageRebate'
@@ -121,8 +131,19 @@ const latestRecord = ref<AffiliateUsageRebateRecord | null>(null)
 const recordTotal = ref(0)
 const recordsOpen = ref(false)
 
-// After a switch back to recharge mode the card stays for inviters who have records.
-const showUsageCard = computed(() => status.value?.rebate_mode === 'usage' || recordTotal.value > 0)
+// The affiliate feature is on, but not for this user (see FORK.md, scope "selected").
+const notAllowed = computed(() => !!status.value && status.value.rebate_mode !== '' && !status.value.allowed)
+
+// The card stays for inviters who have records: after a switch back to recharge mode, and
+// after the feature was switched off for them.
+const showUsageCard = computed(
+  () => recordTotal.value > 0 || (status.value?.rebate_mode === 'usage' && status.value.allowed)
+)
+
+const usageCardHint = computed(() => {
+  if (notAllowed.value) return mt('affiliateUsage.user.history')
+  return status.value?.rebate_mode === 'usage' ? mt('affiliateUsage.user.usageOn') : mt('affiliateUsage.user.usageOff')
+})
 
 const progress = computed(() => {
   const s = status.value
@@ -171,5 +192,7 @@ async function loadLatestRecord(): Promise<void> {
 onMounted(() => {
   void loadStatus()
   void loadLatestRecord()
+  // An admin may have switched the feature on or off for this user since the last check.
+  void refreshAffiliateAccess()
 })
 </script>

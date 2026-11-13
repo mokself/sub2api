@@ -104,7 +104,52 @@ export default {
         usageOff: 'Rebates now follow recharges; the records of earlier usage rebates are kept here.',
         latest: 'Latest: {period}, rebate {amount}',
         none: 'Nothing settled yet.',
-        view: 'View records ({count})'
+        view: 'View records ({count})',
+        history: 'The records of your earlier usage rebates are kept here.'
+      }
+    },
+    affiliateScope: {
+      title: 'Who it is on for',
+      description:
+        'Affiliate rebates can be on for every user or only for selected users. With selected users only, everyone else has no affiliate entry in the menu, their invite code is not valid, and the recharges and usage of the users they invited earn them nothing; rebate quota they already have can still be transferred to the balance.',
+      all: 'All users',
+      selected: 'Selected users only',
+      summarySelected: 'On for {count} users only.',
+      summaryAll: 'On for all users. {count} users are selected; with "Selected users only" it is on for them alone.',
+      howTo: 'Edit a user under Users to switch affiliate rebates on or off for that user.',
+      listTitle: 'Selected users',
+      listFailed: 'Could not load the users',
+      columns: {
+        user: 'User',
+        selectedAt: 'Switched on'
+      },
+      remove: 'Switch off',
+      removed: 'Affiliate rebates switched off for {user}',
+      removeFailed: 'Could not switch it off',
+      confirmTitle: 'Change who it is on for',
+      confirmToSelected: 'After the change only the {count} selected users have affiliate rebates; the invite codes of all other users stop working, and the recharges and usage of the users they invited earn them nothing. Change it?',
+      confirmToAll: 'After the change affiliate rebates are on for all users. Change it?',
+      confirm: 'Change',
+      cancel: 'Cancel',
+      switched: 'Changed who affiliate rebates are on for',
+      switchFailed: 'Could not change who affiliate rebates are on for',
+      loadFailed: 'Could not load who affiliate rebates are on for',
+      retry: 'Retry',
+      user: {
+        label: 'Affiliate rebates',
+        hintOn: 'On for this user: the affiliate page shows, the invite code is valid and rebates are earned.',
+        hintOff: 'Off for this user: the invite code is not valid, and the recharges and usage of the users they invited earn them nothing.',
+        hintScopeAll: 'Affiliate rebates are on for all users, so this switch has no effect yet. Once the system settings limit them to selected users, only users with this switch on have affiliate rebates.',
+        hintFeatureOff: 'Affiliate rebates are switched off altogether, so this switch has no effect for now.',
+        instant: 'The switch takes effect at once, without Update.',
+        loadFailed: 'Could not load the affiliate switch',
+        saveFailed: 'Could not save the affiliate switch',
+        switchedOn: 'Affiliate rebates switched on for this user',
+        switchedOff: 'Affiliate rebates switched off for this user'
+      },
+      notice: {
+        title: 'Affiliate rebates are not on for your account',
+        body: 'Your invite code is not valid at the moment, and the recharges and usage of the users you invited earn you no new rebates. Rebate quota you already have can still be transferred to your balance.'
       }
     }
   }

@@ -6,10 +6,11 @@ import AffiliateUserPanel from '../AffiliateUserPanel.vue'
 import type { AffiliateTierStatus } from '../../api/affiliateTiers'
 import type { AffiliateUsageRebateRecord } from '../../api/affiliateUsageRebates'
 
-const { getAffiliateTierStatus, listMyAffiliateUsageRebates, setAffiliateUsageWording } = vi.hoisted(() => ({
+const { getAffiliateTierStatus, listMyAffiliateUsageRebates, setAffiliateUsageWording, refreshAffiliateAccess } = vi.hoisted(() => ({
   getAffiliateTierStatus: vi.fn(),
   listMyAffiliateUsageRebates: vi.fn(),
-  setAffiliateUsageWording: vi.fn()
+  setAffiliateUsageWording: vi.fn(),
+  refreshAffiliateAccess: vi.fn()
 }))
 
 vi.mock('../../api/affiliateTiers', () => ({ getAffiliateTierStatus }))
@@ -18,6 +19,7 @@ vi.mock('../../i18n', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../i18n')>()),
   setAffiliateUsageWording
 }))
+vi.mock('../access', () => ({ refreshAffiliateAccess }))
 vi.mock('@/utils/format', () => ({ formatCurrency: (amount: number) => `$${amount}` }))
 vi.mock('../usageRebate', () => ({
   formatRebatePeriod: (start: string, end: string) => `${start}~${end}`,
@@ -46,6 +48,7 @@ const RecordsStub = defineComponent({
 function status(patch: Partial<AffiliateTierStatus> = {}): AffiliateTierStatus {
   return {
     rebate_mode: 'recharge',
+    allowed: true,
     enabled: true,
     exclusive: false,
     base_rate_percent: 10,
@@ -203,5 +206,39 @@ describe('AffiliateUserPanel usage rebate card', () => {
     expect(wrapper.find('[data-testid="mok-affiliate-tier-progress"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="mok-affiliate-usage-latest"]').text()).toBe('mok.affiliateUsage.user.none')
     errorSpy.mockRestore()
+  })
+})
+
+describe('AffiliateUserPanel for a user the feature is off for', () => {
+  const notAllowed = (patch: Partial<AffiliateTierStatus> = {}) => status({ allowed: false, enabled: false, tiers: [], ...patch })
+
+  it('says so and has the sidebar entry checked again', async () => {
+    const wrapper = await mountWith(notAllowed())
+
+    expect(wrapper.get('[data-testid="mok-affiliate-not-allowed"]').text()).toContain('mok.affiliateScope.notice.title')
+    expect(wrapper.find('[data-testid="mok-affiliate-tier-progress"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mok-affiliate-usage-card"]').exists()).toBe(false)
+    expect(refreshAffiliateAccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not promise usage rebates, but keeps earlier records reachable', async () => {
+    let wrapper = await mountWith(notAllowed({ rebate_mode: 'usage' }))
+    expect(wrapper.find('[data-testid="mok-affiliate-usage-card"]').exists()).toBe(false)
+
+    listMyAffiliateUsageRebates.mockResolvedValue(records([record()], 3))
+    wrapper = await mountWith(notAllowed({ rebate_mode: 'usage' }))
+    const card = wrapper.get('[data-testid="mok-affiliate-usage-card"]')
+    expect(card.text()).toContain('mok.affiliateUsage.user.history')
+    expect(card.text()).not.toContain('mok.affiliateUsage.user.usageOn')
+  })
+
+  it('shows no notice for a user the feature is on for', async () => {
+    const wrapper = await mountWith(status())
+    expect(wrapper.find('[data-testid="mok-affiliate-not-allowed"]').exists()).toBe(false)
+  })
+
+  it('shows no notice while the whole feature is off', async () => {
+    const wrapper = await mountWith(status({ rebate_mode: '', allowed: false, enabled: false, tiers: [] }))
+    expect(wrapper.find('[data-testid="mok-affiliate-not-allowed"]').exists()).toBe(false)
   })
 })

@@ -48,10 +48,12 @@ git grep -n "\[mok\]"
 | `backend/cmd/server/wire_gen.go` | 生成文件，内容随 `wire.go` 变化 | 不要手改；按 4.1 的命令重新生成 |
 | `frontend/src/main.ts` | 第一行导入 `installMok`；在 `await initI18n()` 之后调用 `await installMok(app)` | fork 前端入口 |
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
-| `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent` | 阶梯返利的计算和比例展示；消耗返利模式下 `mokTieredRebateRatePercent` 返回 0，充值不再返利。见第 11 节 |
+| `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent`；`BindInviterByCode` 里查到邀请人之后加一段 `mokCheckInviterInScope` 调用 | 阶梯返利的计算和比例展示；消耗返利模式下、或邀请人不在开启范围内时 `mokTieredRebateRatePercent` 返回 0，充值不返利；不在开启范围内的用户的邀请码不绑定。见第 11 节 |
 | `backend/internal/repository/affiliate_repo.go` | 常量 `affiliateCodeLength` 从 12 改为 4 | 系统生成的邀请码长度，见第 11 节 |
 | `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片 |
-| `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片和消耗返利卡片；消耗返利模式下改写页面上讲充值返利的两句话 |
+| `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片、消耗返利卡片和「未对你开启」的提示；消耗返利模式下改写页面上讲充值返利的两句话 |
+| `frontend/src/components/admin/user/UserEditModal.vue` | 在 `<UserAttributeForm … />` 下面加 `<MokUserAffiliateSwitch :user-id="user?.id" />` | 用户编辑弹窗里的「邀请返利」开关，见第 11 节 |
+| `frontend/src/components/layout/AppSidebar.vue` | 在 `vue-router` 和 `vue-i18n` 两行 import 之间导入 `mokFilterNavItems`；`finalizeNav()` 里的 `applyFeatureFlags(items)` 外面包一层 `mokFilterNavItems(...)` | 按用户决定是否显示侧边栏的「邀请返利」入口，见第 11 节 |
 
 ## 3. 先看能不能零代码
 
@@ -182,7 +184,11 @@ fork 自己的 key 由 `src/mok/__tests__/i18n.spec.ts` 检查：zh 和 en 的 k
 - 用户端在 `finalizeNav()` 里，
 - 管理端在 `adminNavItems` 的 `applyFeatureFlags(baseItems)` 处，
 
-把菜单列表交给 fork 的函数，由它插入条目。
+把菜单列表交给 fork 的函数，由它插入或去掉条目。
+
+用户端这一处已经接入：`finalizeNav()` 把上游按功能开关筛过的列表交给 `mokFilterNavItems`（`src/mok/affiliate/access.ts`）。以后要在用户菜单里加条目或隐藏条目，改这个函数就行，不用再动 `AppSidebar.vue`。
+
+这个文件上游改得比较多。接入位置是用上游过去一年的提交做合并模拟选出来的：import 放在 `vue-router` 和 `vue-i18n` 两行之间，逻辑放在 `finalizeNav()` 里，两处一年内都没有冲突。文件顶部的 `vue` import 那一行、以及 `const flagXxx = makeSidebarFlag(...)` 那一组常量，上游经常改或在旁边加行，不要把接入点放在它们旁边。
 
 ### 5.5 依赖
 
@@ -527,3 +533,32 @@ docker compose up -d
 - **容量**：码用得越多，生成新码时撞上已有码的机会越大，系统会重试最多 12 次。用户数在十几万以内基本不会重试失败；到几十万以上应该把长度调大。迁移时如果用户数超过可用的码数，多出来的用户保留旧码。
 - **同步上游时**：`affiliate_repo.go` 里那一行如果冲突，保留 4。`backend/internal/repository/affiliate_code_mok_test.go` 会在生成的码不是 4 位时失败，也会在上游把绑定校验的最小长度调到 4 以上时失败。
 - **代码位置**：上游文件 `backend/internal/repository/affiliate_repo.go` 的一行常量；迁移 `backend/migrations/mok_004_affiliate_codes_4_chars.sql`；测试 `backend/internal/repository/affiliate_code_mok_test.go` 和 `backend/internal/mok/affiliate_codes_integration_test.go`。
+
+### 邀请返利只对部分用户开启（2026-11-13）
+
+上游的邀请返利只有「全部开启」和「全部关闭」。现在多了一个中间状态：总开关开着，但只对管理员指定的用户开启。
+
+- **怎么用**：
+  1. 在「用户管理」里编辑用户，弹窗底部有「邀请返利」开关，点一下立即生效，不用点「更新」。
+  2. 在「系统设置 → 功能开关 → 邀请返利 → 开启范围」里选「仅指定用户」。卡片上会列出已经开启的用户，也可以在这里逐个关闭。
+  - 开启范围默认是「全部用户」，和上游一样；这时每个用户的开关不起作用，可以先把人选好再切换范围。
+  - 总开关关闭时，对所有人都关闭，和上游一样。
+- **对已开启的用户**：一切照常，能看到邀请返利页，邀请码有效，能拿充值返利或消耗返利。
+- **对没开启的用户**（范围是「仅指定用户」时）：
+  - 侧边栏没有「邀请返利」入口；直接打开页面地址会看到「暂未对你的账号开启」的提示。
+  - 别人填他的邀请码注册：注册照常成功，但不绑定邀请关系，和填了无效邀请码一样。
+  - 他以前已经邀请到的人之后充值或消耗，不给他返利；重新对他开启后，从那之后的充值和消耗恢复返利，关闭期间的不补。
+  - 已有的返利额度不受影响，仍然可以转入余额。还有返利额度（含冻结中的）没转走的用户，入口会保留，转完之后入口消失。
+- **按邀请人判断**：返利给谁、邀请码是谁的，就看谁有没有被开启。被邀请人自己有没有开启，不影响邀请人拿返利。
+- **存储与接口**：
+  - 范围存在 `settings` 表的 `mok_affiliate_scope` 键里（`all` / `selected`）；被开启的用户在 `mok_affiliate_selected_users` 表里，迁移是 `mok_005_affiliate_selected_users.sql`。
+  - 管理端：
+    - `GET` / `PUT /api/v1/mok/admin/affiliate-scope`，`PUT` 的请求体是 `{"scope": "selected"}`；
+    - `GET /api/v1/mok/admin/affiliate-users`，已开启的用户，参数 `page`、`page_size`；
+    - `GET` / `PUT /api/v1/mok/admin/affiliate-users/:user_id`，`PUT` 的请求体是 `{"selected": true}`。
+    - 两个 `PUT` 都会记入操作审计。
+  - 用户端：`GET /api/v1/mok/affiliate/access` 返回 `allowed`（是否对自己开启）和 `has_quota`（没开启但还有返利额度）；`GET /api/v1/mok/affiliate/rebate-tiers` 多返回一个 `allowed` 字段。
+- **前端的入口判断**：`src/mok/affiliate/access.ts` 在用户登录后请求一次 `access` 接口，结果按用户缓存在浏览器的 `localStorage` 里（键 `mok_affiliate_access`），所以刷新页面时入口不会闪一下。管理员改了某个用户的开关之后，那个用户下次刷新页面或打开邀请返利页时入口才会更新。接口请求失败且没有缓存时，入口照常显示，页面里的提示仍然准确。
+- **代码位置**：
+  - 后端：判断逻辑在 `backend/internal/service/affiliate_scope_mok.go`，SQL 在 `backend/internal/repository/affiliate_scope_repo_mok.go`，接口在 `backend/internal/mok/affiliate_scope_handler.go`。充值返利通过原有的 `mokTieredRebateRatePercent` 接入点生效，消耗返利在 `affiliate_usage_rebate_mok.go` 的结算里跳过范围外的邀请人。
+  - 前端：`frontend/src/mok/affiliate/` 下的 `AffiliateScopeSettings.vue`（设置页卡片）、`UserAffiliateSwitch.vue`（用户编辑弹窗里的开关）、`access.ts`（侧边栏入口）、`AffiliateUserPanel.vue`（用户页提示）；接口封装在 `frontend/src/mok/api/affiliateScope.ts`。

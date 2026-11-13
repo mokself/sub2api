@@ -104,6 +104,12 @@ type mokAffiliateRepo struct {
 	overview    *AffiliateUserOverview
 	// existingRebate is what GetAccruedRebateFromInvitee reports for every pair.
 	existingRebate float64
+	// selected holds the users the affiliate feature is switched on for (MokAffiliateScopeStore).
+	selected map[int64]bool
+	// bound records BindInviter calls as {user, inviter}.
+	bound [][2]int64
+	// withQuota holds the users MokAffiliateUserHasQuota reports rebate quota for.
+	withQuota map[int64]bool
 }
 
 func (r *mokAffiliateRepo) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {

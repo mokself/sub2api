@@ -9,7 +9,7 @@ package service
 // else the global rate. Only usage inside the usage window counts: from the switch to usage
 // mode until the switch back. The per-invitee cap, rebate duration and freeze period apply
 // as for recharges, and hours that end while the affiliate feature is off are closed
-// without rebates.
+// without rebates. Inviters outside the scope (affiliate_scope_mok.go) are left out.
 
 import (
 	"context"
@@ -385,8 +385,9 @@ func (s *MokAffiliateUsageRebateService) SettleDueAt(ctx context.Context, now ti
 		from = *settledUntil
 	}
 	loc := s.location()
-	// Rates are those at settlement time, so one lookup per inviter serves the whole run.
-	rates := make(map[int64]float64)
+	// Rates and the scope are those at settlement time, so one lookup per inviter serves
+	// the whole run.
+	run := &mokUsageRebateRun{rates: make(map[int64]float64), inScope: make(map[int64]bool)}
 	closed := 0
 	for closed < mokUsageRebateMaxPeriodsPerRun {
 		if !end.IsZero() && !from.Before(end) {
@@ -399,7 +400,7 @@ func (s *MokAffiliateUsageRebateService) SettleDueAt(ctx context.Context, now ti
 		if now.Before(to.Add(mokUsageRebateSettleDelay)) {
 			break
 		}
-		if err := s.settlePeriod(ctx, store, from, to, loc, rates); err != nil {
+		if err := s.settlePeriod(ctx, store, from, to, loc, run); err != nil {
 			return closed, fmt.Errorf("settle %s: %w", from.In(loc).Format(time.RFC3339), err)
 		}
 		closed++
@@ -408,7 +409,13 @@ func (s *MokAffiliateUsageRebateService) SettleDueAt(ctx context.Context, now ti
 	return closed, nil
 }
 
-func (s *MokAffiliateUsageRebateService) settlePeriod(ctx context.Context, store MokAffiliateUsageRebateStore, from, to time.Time, loc *time.Location, rates map[int64]float64) error {
+// mokUsageRebateRun caches what one settlement run looked up per inviter.
+type mokUsageRebateRun struct {
+	rates   map[int64]float64
+	inScope map[int64]bool
+}
+
+func (s *MokAffiliateUsageRebateService) settlePeriod(ctx context.Context, store MokAffiliateUsageRebateStore, from, to time.Time, loc *time.Location, run *mokUsageRebateRun) error {
 	affiliates := s.affiliates
 	settings := affiliates.settingService
 	day := from.In(loc).Format(mokUsageRebateDayLayout)
@@ -423,7 +430,17 @@ func (s *MokAffiliateUsageRebateService) settlePeriod(ctx context.Context, store
 		freezeHours := settings.GetAffiliateRebateFreezeHours(ctx)
 		perInviteeCap := settings.GetAffiliateRebatePerInviteeCap(ctx)
 		for _, usage := range usages {
-			rate, ok := rates[usage.InviterID]
+			inScope, ok := run.inScope[usage.InviterID]
+			if !ok {
+				if inScope, err = affiliates.mokInScope(ctx, usage.InviterID); err != nil {
+					return err
+				}
+				run.inScope[usage.InviterID] = inScope
+			}
+			if !inScope {
+				continue
+			}
+			rate, ok := run.rates[usage.InviterID]
 			if !ok {
 				inviter, err := affiliates.repo.EnsureUserAffiliate(ctx, usage.InviterID)
 				if err != nil {
@@ -432,7 +449,7 @@ func (s *MokAffiliateUsageRebateService) settlePeriod(ctx context.Context, store
 				if rate, err = affiliates.mokTierRatePercent(ctx, inviter, affiliates.resolveRebateRatePercent(ctx, inviter), 0, nil); err != nil {
 					return err
 				}
-				rates[usage.InviterID] = rate
+				run.rates[usage.InviterID] = rate
 			}
 			rebate := roundTo(usage.Amount*rate/100, 8)
 			if perInviteeCap > 0 && rebate > 0 {

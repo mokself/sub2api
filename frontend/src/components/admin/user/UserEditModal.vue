@@ -67,6 +67,7 @@
         <p class="input-hint">{{ t('admin.users.form.rpmLimitHint') }}</p>
       </div>
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
+      <MokUserAffiliateSwitch :user-id="user?.id" /> <!-- [mok] per-user affiliate switch, see FORK.md -->
     </form>
     <template #footer>
       <div class="flex justify-end gap-3">

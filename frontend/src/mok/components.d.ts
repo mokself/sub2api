@@ -6,5 +6,6 @@ declare module 'vue' {
   export interface GlobalComponents {
     MokAffiliateSettings: (typeof import('./affiliate/AffiliateSettings.vue'))['default']
     MokAffiliateUserPanel: (typeof import('./affiliate/AffiliateUserPanel.vue'))['default']
+    MokUserAffiliateSwitch: (typeof import('./affiliate/UserAffiliateSwitch.vue'))['default']
   }
 }

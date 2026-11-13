@@ -55,6 +55,9 @@ type MokAffiliateTierStatus struct {
 	RebateMode string `json:"rebate_mode"`
 	// Enabled is true when the affiliate feature is on and tiers are configured.
 	Enabled bool `json:"enabled"`
+	// Allowed is false while the affiliate feature is on, but not for this user (see
+	// affiliate_scope_mok.go). RebateMode is still reported then.
+	Allowed bool `json:"allowed"`
 	// Exclusive is true when the user has an exclusive rate, which tiers do not change.
 	Exclusive          bool                     `json:"exclusive"`
 	BaseRatePercent    float64                  `json:"base_rate_percent"`
@@ -181,9 +184,19 @@ func (s *AffiliateService) mokTeamVolume(ctx context.Context, inviterID int64, e
 
 // mokTieredRebateRatePercent is called by AccrueInviteRebateForOrder through a [mok] seam,
 // after upstream resolved baseRate (exclusive or global), and returns the rate for that
-// recharge. In usage mode recharges earn nothing (rate 0, so upstream books no rebate);
-// rebates come from the daily settlement in affiliate_usage_rebate_mok.go instead.
+// recharge. A rate of 0 makes upstream book no rebate. That is the case for an inviter
+// outside the scope (affiliate_scope_mok.go) and for every recharge in usage mode, where
+// rebates come from the hourly settlement in affiliate_usage_rebate_mok.go instead.
 func (s *AffiliateService) mokTieredRebateRatePercent(ctx context.Context, inviter *AffiliateSummary, baseRate, rechargeAmount float64, sourceOrderID *int64) (float64, error) {
+	if inviter != nil {
+		inScope, err := s.mokInScope(ctx, inviter.UserID)
+		if err != nil {
+			return 0, err
+		}
+		if !inScope {
+			return 0, nil
+		}
+	}
 	if s != nil && s.settingService != nil {
 		mode, err := s.settingService.MokGetAffiliateRebateMode(ctx)
 		if err != nil {
@@ -267,6 +280,12 @@ func (s *AffiliateService) MokAffiliateTierStatus(ctx context.Context, userID in
 		return nil, err
 	}
 	status.RebateMode = mode
+	if status.Allowed, err = s.mokInScope(ctx, userID); err != nil {
+		return nil, err
+	}
+	if !status.Allowed {
+		return status, nil
+	}
 	tiers, err := s.settingService.MokGetAffiliateRebateTiers(ctx)
 	if err != nil {
 		return nil, err

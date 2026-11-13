@@ -324,6 +324,9 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 	if inviterSummary == nil || inviterSummary.UserID <= 0 || inviterSummary.UserID == userID {
 		return ErrAffiliateCodeInvalid
 	}
+	if err := s.mokCheckInviterInScope(ctx, inviterSummary.UserID); err != nil { // [mok] per-user scope, see FORK.md
+		return err
+	}
 
 	bound, err := s.repo.BindInviter(ctx, userID, inviterSummary.UserID)
 	if err != nil {

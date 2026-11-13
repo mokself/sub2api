@@ -190,6 +190,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { mokFilterNavItems } from '@/mok/affiliate/access' // [mok]
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
@@ -752,7 +753,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
 
 // finalizeNav 合并三重过滤：featureFlag 过滤 + simple 模式过滤。
 function finalizeNav(items: NavItem[]): NavItem[] {
-  const visible = applyFeatureFlags(items)
+  const visible = mokFilterNavItems(applyFeatureFlags(items)) // [mok] per-user affiliate entry, see FORK.md
   return authStore.isSimpleMode ? visible.filter(item => !item.hideInSimpleMode) : visible
 }
 

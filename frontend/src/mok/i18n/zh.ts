@@ -104,7 +104,52 @@ export default {
         usageOff: '现在按充值返利；这里保留之前按消耗结算的返利记录。',
         latest: '最近一笔：{period}，返利 {amount}',
         none: '还没有结算记录。',
-        view: '查看明细（{count}）'
+        view: '查看明细（{count}）',
+        history: '这里保留你之前的消耗返利记录。'
+      }
+    },
+    affiliateScope: {
+      title: '开启范围',
+      description:
+        '邀请返利可以对全部用户开启，也可以只对指定的用户开启。只对指定用户开启时，其他用户看不到邀请返利入口，他们的邀请码无效，名下被邀请人的充值和消耗也不给他们返利；已有的返利额度仍然可以转入余额。',
+      all: '全部用户',
+      selected: '仅指定用户',
+      summarySelected: '现在只对 {count} 个用户开启。',
+      summaryAll: '现在对全部用户开启。已指定 {count} 个用户，改为「仅指定用户」后只对他们开启。',
+      howTo: '在「用户管理」里编辑用户，可以打开或关闭这个用户的邀请返利。',
+      listTitle: '已指定的用户',
+      listFailed: '用户列表加载失败',
+      columns: {
+        user: '用户',
+        selectedAt: '开启时间'
+      },
+      remove: '关闭',
+      removed: '已关闭 {user} 的邀请返利',
+      removeFailed: '关闭失败',
+      confirmTitle: '切换开启范围',
+      confirmToSelected: '切换后，只有已指定的 {count} 个用户有邀请返利；其他用户的邀请码失效，名下被邀请人的充值和消耗不再给他们返利。确定切换吗？',
+      confirmToAll: '切换后，邀请返利对全部用户开启。确定切换吗？',
+      confirm: '确定切换',
+      cancel: '取消',
+      switched: '开启范围已切换',
+      switchFailed: '开启范围切换失败',
+      loadFailed: '开启范围加载失败',
+      retry: '重试',
+      user: {
+        label: '邀请返利',
+        hintOn: '已对该用户开启：能看到邀请返利页，邀请码有效，能拿返利。',
+        hintOff: '未对该用户开启：邀请码无效，名下被邀请人的充值和消耗不给他返利。',
+        hintScopeAll: '现在邀请返利对全部用户开启，这个开关暂时不起作用。在系统设置里把开启范围改为「仅指定用户」后，只有打开这个开关的用户才有邀请返利。',
+        hintFeatureOff: '邀请返利总开关已关闭，这个开关暂时不起作用。',
+        instant: '切换后立即生效，不需要点「更新」。',
+        loadFailed: '邀请返利开关加载失败',
+        saveFailed: '邀请返利开关保存失败',
+        switchedOn: '已对该用户开启邀请返利',
+        switchedOff: '已对该用户关闭邀请返利'
+      },
+      notice: {
+        title: '邀请返利暂未对你的账号开启',
+        body: '你的邀请码目前无效，你邀请的用户充值或消耗也不会给你带来新的返利。已有的返利额度仍然可以转入余额。'
       }
     }
   }

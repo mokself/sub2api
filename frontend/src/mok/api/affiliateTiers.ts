@@ -10,7 +10,12 @@ export interface AffiliateRebateTier {
 export interface AffiliateTierStatus {
   /** "recharge" or "usage" while the affiliate feature is on, empty while it is off. */
   rebate_mode: '' | 'recharge' | 'usage'
-  /** The affiliate feature is on and tiers are configured. */
+  /**
+   * False while the affiliate feature is on, but not for this user (scope "selected").
+   * Meaningless while rebate_mode is empty.
+   */
+  allowed: boolean
+  /** The affiliate feature is on for the user and tiers are configured. */
   enabled: boolean
   /** The user has an exclusive rate, which tiers do not change. */
   exclusive: boolean
