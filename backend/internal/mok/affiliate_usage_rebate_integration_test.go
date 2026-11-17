@@ -185,12 +185,11 @@ func TestHourlyUsageRebateWithRealRepositories(t *testing.T) {
 		require.Equal(t, want, total, "search %q", search)
 	}
 
-	// An inviter sees only their own records, with masked invitee emails.
+	// An inviter sees only their own records, with the full invitee emails.
 	own, total, err := usageRebate.ListRecordsForInviter(ctx, inviter, 1, 20)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
-	require.NotEqual(t, f.email(second), own[0].InviteeEmail)
-	require.Contains(t, own[0].InviteeEmail, "***")
+	require.Equal(t, f.email(second), own[0].InviteeEmail)
 	require.Zero(t, own[0].InviteeID)
 	require.Empty(t, own[0].InviterEmail)
 	_, total, err = usageRebate.ListRecordsForInviter(ctx, invitee, 1, 20)

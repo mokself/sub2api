@@ -462,7 +462,7 @@ func (s *AffiliateService) listInvitees(ctx context.Context, inviterID int64) ([
 		return nil, err
 	}
 	for i := range invitees {
-		invitees[i].Email = maskEmail(invitees[i].Email)
+		invitees[i].Email = mokInviteeEmail(invitees[i].Email) // [mok] was maskEmail: inviters see full emails, see FORK.md
 	}
 	return invitees, nil
 }

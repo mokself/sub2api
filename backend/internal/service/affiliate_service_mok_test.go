@@ -110,6 +110,8 @@ type mokAffiliateRepo struct {
 	bound [][2]int64
 	// withQuota holds the users MokAffiliateUserHasQuota reports rebate quota for.
 	withQuota map[int64]bool
+	// invitees is what ListInvitees reports for every inviter.
+	invitees []AffiliateInvitee
 }
 
 func (r *mokAffiliateRepo) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
@@ -134,7 +136,7 @@ func (r *mokAffiliateRepo) ThawFrozenQuota(context.Context, int64) (float64, err
 }
 
 func (r *mokAffiliateRepo) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
-	return []AffiliateInvitee{}, nil
+	return append([]AffiliateInvitee{}, r.invitees...), nil
 }
 
 func (r *mokAffiliateRepo) GetAffiliateUserOverview(context.Context, int64) (*AffiliateUserOverview, error) {
@@ -400,4 +402,20 @@ func TestMokTeamVolumeRequiresRepositorySupport(t *testing.T) {
 
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "team recharge volume"))
+}
+
+func TestMokAffiliateDetailShowsFullInviteeEmails(t *testing.T) {
+	svc, repo, _ := newMokAffiliateFixture(t, "")
+	repo.invitees = []AffiliateInvitee{
+		{UserID: mokInviteeID, Email: "invitee@example.com", Username: "invitee"},
+		{UserID: 21, Email: "", Username: ""},
+	}
+
+	detail, err := svc.GetAffiliateDetail(context.Background(), mokInviterID)
+
+	require.NoError(t, err)
+	require.Equal(t, []AffiliateInvitee{
+		{UserID: mokInviteeID, Email: "invitee@example.com", Username: "invitee"},
+		{UserID: 21},
+	}, detail.Invitees)
 }

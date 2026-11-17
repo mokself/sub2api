@@ -11,7 +11,7 @@ export interface AffiliateUsageRebateRecord {
   inviter_email?: string
   /** Admin list only. */
   invitee_id?: number
-  /** Masked in a user's own list. */
+  /** The invitee's full email, in both lists. */
   invitee_email: string
   usage_amount: number
   rate_percent: number

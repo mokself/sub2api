@@ -48,7 +48,7 @@ git grep -n "\[mok\]"
 | `backend/cmd/server/wire_gen.go` | 生成文件，内容随 `wire.go` 变化 | 不要手改；按 4.1 的命令重新生成 |
 | `frontend/src/main.ts` | 第一行导入 `installMok`；在 `await initI18n()` 之后调用 `await installMok(app)` | fork 前端入口 |
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
-| `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent`；`BindInviterByCode` 里查到邀请人之后加一段 `mokCheckInviterInScope` 调用 | 阶梯返利的计算和比例展示；消耗返利模式下、或邀请人不在开启范围内时 `mokTieredRebateRatePercent` 返回 0，充值不返利；不在开启范围内的用户的邀请码不绑定。见第 11 节 |
+| `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent`；`BindInviterByCode` 里查到邀请人之后加一段 `mokCheckInviterInScope` 调用；`listInvitees` 里的 `maskEmail(...)` 改为 `mokInviteeEmail(...)` | 阶梯返利的计算和比例展示；消耗返利模式下、或邀请人不在开启范围内时 `mokTieredRebateRatePercent` 返回 0，充值不返利；不在开启范围内的用户的邀请码不绑定；邀请返利页的已邀请用户显示完整邮箱。见第 11 节 |
 | `backend/internal/repository/affiliate_repo.go` | 常量 `affiliateCodeLength` 从 12 改为 4 | 系统生成的邀请码长度，见第 11 节 |
 | `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片 |
 | `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片、消耗返利卡片和「未对你开启」的提示；消耗返利模式下改写页面上讲充值返利的两句话 |
@@ -498,7 +498,7 @@ docker compose up -d
 - **不会重复返利**：每个「被邀请人 + 时段」只结算一次。结算记录和返利额度在同一个事务里写入，中途失败会整体回滚，下次重试。
 - **明细和展示**：
   - 管理端「返利方式」卡片：当前方式、起止时刻、已结算到的时刻，最近 14 天按天汇总（被邀请人数、消耗额、返利额）。点「查看明细」打开全部结算记录：时段、邀请人、被邀请人、消耗、比例、返利，可以按邮箱或用户名搜索。
-  - 用户的邀请返利页：多一张「消耗返利」卡片，显示最近一笔，并能打开自己的明细；被邀请人只显示打码后的邮箱。消耗返利模式下这张卡片一直显示；切回充值返利后，有过记录的用户仍然能看到。
+  - 用户的邀请返利页：多一张「消耗返利」卡片，显示最近一笔，并能打开自己的明细；被邀请人显示完整邮箱（见「已邀请用户显示完整邮箱」）。消耗返利模式下这张卡片一直显示；切回充值返利后，有过记录的用户仍然能看到。
   - 用户的邀请返利页上，「我的返利比例」下的说明和「使用说明」第 2 条改为讲消耗返利；阶梯进度卡片里加一句说明。
   - 上游管理端的「返利记录」里，每条消耗返利也各占一行（订单相关的列显示 `-`）。
 - **存储与接口**：
@@ -562,3 +562,11 @@ docker compose up -d
 - **代码位置**：
   - 后端：判断逻辑在 `backend/internal/service/affiliate_scope_mok.go`，SQL 在 `backend/internal/repository/affiliate_scope_repo_mok.go`，接口在 `backend/internal/mok/affiliate_scope_handler.go`。充值返利通过原有的 `mokTieredRebateRatePercent` 接入点生效，消耗返利在 `affiliate_usage_rebate_mok.go` 的结算里跳过范围外的邀请人。
   - 前端：`frontend/src/mok/affiliate/` 下的 `AffiliateScopeSettings.vue`（设置页卡片）、`UserAffiliateSwitch.vue`（用户编辑弹窗里的开关）、`access.ts`（侧边栏入口）、`AffiliateUserPanel.vue`（用户页提示）；接口封装在 `frontend/src/mok/api/affiliateScope.ts`。
+
+### 已邀请用户显示完整邮箱（2026-11-17）
+
+上游在用户的邀请返利页上把「已邀请用户」表格里的邮箱打码（如 `a***@g***.com`）。现在改为显示完整邮箱；用户名上游本来就不打码，没设用户名的显示 `-`。同一页「消耗返利明细」里的被邀请人邮箱也一样完整显示。
+
+- 只影响邀请人看自己邀请的用户；管理端本来就显示完整邮箱。
+- 改动是上游 `backend/internal/service/affiliate_service.go` 的 `listInvitees` 里一行：`maskEmail(...)` 换成 fork 的 `mokInviteeEmail(...)`（在 `affiliate_service_mok.go`，原样返回邮箱）。上游的 `maskEmail` 函数和它的测试原样保留，fork 用 `var _ = maskEmail` 引用一次，避免 lint 报「未使用」。
+- 想恢复打码：把 `mokInviteeEmail` 改成 `return maskEmail(email)` 即可，两处列表一起恢复。

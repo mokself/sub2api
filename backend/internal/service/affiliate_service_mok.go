@@ -266,6 +266,17 @@ func affiliateSummaryUserID(summary *AffiliateSummary) int64 {
 	return summary.UserID
 }
 
+// mokInviteeEmail replaces maskEmail in listInvitees through a [mok] seam: an inviter sees
+// the full email of each user they invited on their affiliate page, as the operator asked.
+// The usage rebate records of the same page (ListRecordsForInviter) show it the same way.
+func mokInviteeEmail(email string) string {
+	return email
+}
+
+// The fork no longer calls upstream's maskEmail, which stays as it is together with
+// upstream's own test of it; this reference keeps the unused linter from reporting it.
+var _ = maskEmail
+
 // MokAffiliateTierStatus reports the tiers and the user's progress through them.
 func (s *AffiliateService) MokAffiliateTierStatus(ctx context.Context, userID int64) (*MokAffiliateTierStatus, error) {
 	status := &MokAffiliateTierStatus{Tiers: []MokAffiliateRebateTier{}}

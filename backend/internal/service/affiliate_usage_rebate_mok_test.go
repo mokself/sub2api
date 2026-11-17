@@ -430,8 +430,7 @@ func TestMokUsageRebateRecordLists(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Equal(t, MokAffiliateUsageRebateFilter{InviterID: mokInviterID, Page: 2, PageSize: mokUsageRebateDefaultPageSize}, repo.listFilters[1])
 	own := records[0]
-	require.Equal(t, maskEmail("invitee@example.com"), own.InviteeEmail)
-	require.NotEqual(t, "invitee@example.com", own.InviteeEmail)
+	require.Equal(t, "invitee@example.com", own.InviteeEmail, "inviters see the full email of their invitees")
 	require.Zero(t, own.InviteeID)
 	require.Zero(t, own.InviterID)
 	require.Empty(t, own.InviterEmail)

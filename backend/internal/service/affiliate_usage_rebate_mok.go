@@ -541,8 +541,8 @@ func (s *MokAffiliateUsageRebateService) ListRecords(ctx context.Context, filter
 	return records, total, nil
 }
 
-// ListRecordsForInviter returns the user's own records. As on the affiliate page, invitees
-// are shown by masked email only.
+// ListRecordsForInviter returns the user's own records, with the full email of each invitee
+// as on the affiliate page (mokInviteeEmail).
 func (s *MokAffiliateUsageRebateService) ListRecordsForInviter(ctx context.Context, inviterID int64, page, pageSize int) ([]MokAffiliateUsageRebateRecord, int64, error) {
 	if inviterID <= 0 {
 		return nil, 0, infraerrors.BadRequest("INVALID_USER", "invalid user")
@@ -555,7 +555,7 @@ func (s *MokAffiliateUsageRebateService) ListRecordsForInviter(ctx context.Conte
 		records[i].InviterID = 0
 		records[i].InviterEmail = ""
 		records[i].InviteeID = 0
-		records[i].InviteeEmail = maskEmail(records[i].InviteeEmail)
+		records[i].InviteeEmail = mokInviteeEmail(records[i].InviteeEmail)
 	}
 	return records, total, nil
 }
