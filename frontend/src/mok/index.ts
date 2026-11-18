@@ -25,4 +25,6 @@ export async function installMok(app: App): Promise<void> {
     'MokUserAffiliateSwitch',
     defineAsyncComponent(() => import('./affiliate/UserAffiliateSwitch.vue'))
   )
+  app.component('MokSmsSettings', defineAsyncComponent(() => import('./sms/SmsSettings.vue')))
+  app.component('MokSmsNotifyPhone', defineAsyncComponent(() => import('./sms/SmsNotifyPhone.vue')))
 }

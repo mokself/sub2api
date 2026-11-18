@@ -152,6 +152,7 @@
           </p>
         </div>
       </template>
+      <MokSmsNotifyPhone /> <!-- [mok] SMS reminder phone, see FORK.md -->
     </div>
   </div>
 </template>

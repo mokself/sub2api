@@ -151,6 +151,180 @@ export default {
         title: '邀请返利暂未对你的账号开启',
         body: '你的邀请码目前无效，你邀请的用户充值或消耗也不会给你带来新的返利。已有的返利额度仍然可以转入余额。'
       }
+    },
+    sms: {
+      title: '短信通知',
+      description:
+        '通过腾讯云短信发送余额不足提醒、订阅到期提醒，以及发给管理员的运维告警和账号限额告警。短信和邮件相互独立：用户绑定了手机号就收短信，添加了通知邮箱就收邮件，两者都有就都收。充值成功、订阅购买成功和风控通知不发短信。',
+      enabled: '启用短信通知',
+      dryRun: '仅记录不发送',
+      dryRunHint: '打开后短信只写入发送记录、不真正发出，不填腾讯云配置也能试用整个流程；验证码会显示在发送记录里。',
+      provider: '腾讯云短信',
+      providerHint: '在腾讯云短信控制台创建应用、申请签名和模板，审核通过后填到这里。SecretKey 保存后不再显示。',
+      secretId: 'SecretId',
+      secretKey: 'SecretKey',
+      secretKeySet: '已设置，留空不修改',
+      sdkAppId: 'SDK AppID',
+      signName: '短信签名',
+      signNamePlaceholder: '审核通过的签名内容',
+      region: '地域',
+      regions: {
+        guangzhou: '华南地区（广州）',
+        beijing: '华北地区（北京）',
+        nanjing: '华东地区（南京）'
+      },
+      templates: '短信模板',
+      templatesHint:
+        '模板要先在腾讯云申请并审核通过，可以参考下面的建议模板。变量的个数和顺序必须和建议模板一致，每个变量最多 20 个字，超出部分会被截掉。',
+      columns: {
+        send: '发送',
+        templateId: '模板 ID'
+      },
+      templateIdPlaceholder: '模板 ID',
+      suggested: '建议模板',
+      params: '变量依次为：{params}',
+      copy: '复制模板',
+      copied: '模板已复制',
+      always: '绑定时发送',
+      kinds: {
+        verify_code: {
+          name: '验证码',
+          hint: '用户在个人资料页绑定手机号时使用，不配置就不能绑定手机号。',
+          params: '验证码、有效分钟数'
+        },
+        balance_low: {
+          name: '余额不足提醒',
+          hint: '用户余额降到提醒阈值以下时发送，开关和阈值沿用上面的「余额不足提醒」；每人每天最多一条。',
+          params: '当前余额、提醒阈值'
+        },
+        subscription_expiry: {
+          name: '订阅到期提醒',
+          hint: '订阅到期前 7 天、3 天、1 天各发一条到用户绑定的手机号，和到期提醒邮件各自发送。',
+          params: '订阅名称、到期时间、剩余天数'
+        },
+        ops_alert: {
+          name: '运维告警',
+          hint: '运维监控的告警规则触发时发给管理员手机号，遵守告警静默设置。',
+          params: '规则名称、级别、当前值、阈值'
+        },
+        account_quota: {
+          name: '账号限额告警',
+          hint: '账号用量达到告警线时发给管理员手机号；需要打开上面的「账号限额通知」，并在账号里设置告警阈值。每个账号的每种限额每天最多一条。',
+          params: '账号名称、限额类型、剩余额度、额度上限'
+        }
+      },
+      adminPhones: '管理员告警手机号',
+      adminPhonesHint: '运维告警和账号限额告警发到这些号码。每行一个，最多 10 个，仅支持中国大陆手机号。',
+      minLevel: '运维告警最低级别',
+      minLevels: {
+        all: '全部级别',
+        info: '提示（P2、P3）及以上',
+        warning: '警告（P1）及以上',
+        critical: '仅严重（P0）'
+      },
+      dailyLimit: '每天上限',
+      dailyLimitHint: '每个用户每天最多收到的通知短信条数，管理员告警按每个手机号计；0 为不限。验证码和测试短信不计入。',
+      dailyLimitUnit: '条',
+      save: '保存短信设置',
+      saving: '保存中…',
+      saved: '短信设置已保存',
+      saveFailed: '短信设置保存失败',
+      unsaved: '有未保存的修改',
+      loadFailed: '短信设置加载失败',
+      retry: '重试',
+      showLogs: '发送记录',
+      test: {
+        title: '发送测试短信',
+        hint: '用已保存的设置，把所选模板填上示例内容发到这个号码；没打开「启用短信通知」也能测试。',
+        phonePlaceholder: '接收测试短信的手机号',
+        send: '发送测试',
+        sending: '发送中…',
+        saveFirst: '先保存设置再测试',
+        sent: '测试短信已发出',
+        dryRun: '已写入发送记录（仅记录不发送）',
+        failed: '发送失败：{error}',
+        requestFailed: '测试短信发送失败'
+      },
+      validation: {
+        phones: '这些号码不是中国大陆手机号：{phones}',
+        tooManyPhones: '管理员手机号最多 10 个',
+        templateId: '模板 ID 是一串数字，例如 1234567',
+        appId: 'SDK AppID 是一串数字，例如 1400000000',
+        dailyLimit: '每天上限要在 0 到 1000 之间',
+        credentials: '启用前要填好 SecretId、SecretKey、SDK AppID 和短信签名，或者打开「仅记录不发送」'
+      },
+      log: {
+        title: '短信发送记录',
+        hint: '最近 90 天的短信，最新的在前。验证码不会保存，仅记录不发送模式除外。',
+        searchPlaceholder: '搜索手机号或用户邮箱',
+        search: '搜索',
+        empty: '还没有发送记录',
+        noMatch: '没有匹配的记录',
+        loadFailed: '发送记录加载失败',
+        retry: '重试',
+        admin: '管理员',
+        columns: {
+          time: '时间',
+          event: '类型',
+          phone: '手机号',
+          user: '接收人',
+          content: '模板与变量',
+          status: '状态'
+        },
+        events: {
+          verify_code: '验证码',
+          test: '测试',
+          balance_low: '余额不足',
+          subscription_expiry: '订阅到期',
+          ops_alert: '运维告警',
+          account_quota: '账号限额'
+        },
+        statuses: {
+          pending: '发送中',
+          sent: '已发送',
+          failed: '失败',
+          dry_run: '仅记录',
+          limited: '超出每天上限'
+        }
+      },
+      user: {
+        title: '短信提醒',
+        description: '绑定手机号后，{events}会发短信到这个号码，和通知邮箱互不影响。只能绑定一个中国大陆手机号。',
+        and: '和',
+        events: {
+          balance_low: '余额不足提醒',
+          subscription_expiry: '订阅到期提醒'
+        },
+        phonePlaceholder: '手机号',
+        sendCode: '获取验证码',
+        resend: '重新获取',
+        countdown: '{seconds} 秒后重新获取',
+        codePlaceholder: '6 位验证码',
+        bind: '验证并绑定',
+        cancel: '取消',
+        verified: '已验证',
+        remove: '解绑',
+        codeSent: '验证码已发送到 {phone}',
+        bound: '手机号已绑定',
+        removed: '手机号已解绑',
+        paused: '已暂停短信提醒',
+        resumed: '已恢复短信提醒',
+        sendFailed: '验证码发送失败',
+        bindFailed: '绑定失败',
+        updateFailed: '操作失败',
+        loadFailed: '短信提醒加载失败'
+      },
+      errors: {
+        MOK_SMS_UNAVAILABLE: '短信提醒暂不可用',
+        MOK_SMS_PHONE_INVALID: '请输入正确的中国大陆手机号',
+        MOK_SMS_CODE_COOLDOWN: '获取太频繁，请 {seconds} 秒后再试',
+        MOK_SMS_CODE_DAILY_LIMIT: '今天获取验证码的次数已用完，请明天再试',
+        MOK_SMS_CODE_INVALID: '验证码不正确',
+        MOK_SMS_CODE_EXPIRED: '验证码已失效，请重新获取',
+        MOK_SMS_SEND_FAILED: '短信发送失败，请稍后再试',
+        MOK_SMS_PHONE_NOT_BOUND: '还没有绑定手机号',
+        MOK_SMS_NOT_CONFIGURED: '先填好并保存腾讯云配置和所选模板的 ID'
+      }
     }
   }
 }

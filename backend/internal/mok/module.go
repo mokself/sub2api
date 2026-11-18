@@ -21,6 +21,9 @@ var ProviderSet = wire.NewSet(
 	NewClaudePlanStore,
 	NewClaudePlanService,
 	service.NewMokAffiliateUsageRebateService,
+	NewSMSStore,
+	NewTencentSMSSender,
+	NewSMSService,
 	NewModule,
 )
 
@@ -49,12 +52,14 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, m *Module) *http.
 type Module struct {
 	ClaudePlan           *ClaudePlanService
 	AffiliateUsageRebate *service.MokAffiliateUsageRebateService
+	SMS                  *SMSService
 }
 
 // Stop ends the fork's background jobs.
 func (m *Module) Stop() {
 	if m != nil {
 		m.AffiliateUsageRebate.Stop()
+		m.SMS.Stop()
 	}
 }
 
@@ -71,6 +76,7 @@ func NewModule(
 	redisClient *redis.Client,
 	claudePlan *ClaudePlanService,
 	affiliateUsageRebate *service.MokAffiliateUsageRebateService,
+	sms *SMSService,
 ) *Module {
 	panelRateLimiter := middleware.NewPanelRateLimiter(redisClient, settingService)
 
@@ -95,9 +101,13 @@ func NewModule(
 	registerAffiliateTierRoutes(admin, user, settingService, affiliateService)
 	registerAffiliateModeRoutes(admin, user, affiliateUsageRebate)
 	registerAffiliateScopeRoutes(admin, user, affiliateService)
+	registerSMSRoutes(admin, user, sms)
 
 	affiliateUsageRebate.Start()
-	return &Module{ClaudePlan: claudePlan, AffiliateUsageRebate: affiliateUsageRebate}
+	// The SMS channel of upstream's notifications, see service/sms_notify_mok.go.
+	service.MokSetSMSNotifier(sms)
+	sms.Start()
+	return &Module{ClaudePlan: claudePlan, AffiliateUsageRebate: affiliateUsageRebate, SMS: sms}
 }
 
 // rejectRestrictedAdminKeys keeps scoped admin API keys out. Fork routes take raw

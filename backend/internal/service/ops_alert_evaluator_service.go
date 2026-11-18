@@ -291,6 +291,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			}
 
 			eventsCreated++
+			s.mokSendOpsAlertSMS(ctx, runtimeCfg, rule, created) // [mok] SMS channel, see FORK.md
 			if created != nil && created.ID > 0 {
 				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
 					emailsSent++

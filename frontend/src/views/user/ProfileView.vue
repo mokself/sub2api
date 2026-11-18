@@ -43,6 +43,7 @@
         :user-email="user.email"
       />
 
+      <MokSmsNotifyPhone v-if="user && !balanceLowNotifyEnabled" standalone /> <!-- [mok] SMS reminder phone, see FORK.md -->
       <ProfileTotpCard />
       <ProfilePasskeyCard :enabled="passkeyEnabled" />
     </div>

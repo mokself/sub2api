@@ -122,6 +122,7 @@ func crossedDownward(oldV, newV, threshold float64) bool {
 
 // dispatchBalanceLowEmail sends within the bounded notification task.
 func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL string) {
+	s.mokSendBalanceLowSMS(ctx, user, newBalance, threshold) // [mok] SMS channel, see FORK.md
 	siteName := s.getSiteName(ctx)
 	recipients := s.collectBalanceNotifyRecipients(user)
 	slog.Info("CheckBalanceAfterDeduction: sending notification",
@@ -176,6 +177,7 @@ func buildQuotaDimsFromState(account *Account, state *AccountQuotaState) []quota
 // When quotaState is non-nil (from DB transaction RETURNING), it is used directly for threshold
 // checking, avoiding a separate DB read. Otherwise it falls back to fetching fresh account data.
 func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64, quotaState *AccountQuotaState) {
+	s.mokCheckAccountQuotaSMS(ctx, account, cost, quotaState) // [mok] SMS channel, see FORK.md
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {
 		return
 	}

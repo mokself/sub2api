@@ -151,6 +151,184 @@ export default {
         title: 'Affiliate rebates are not on for your account',
         body: 'Your invite code is not valid at the moment, and the recharges and usage of the users you invited earn you no new rebates. Rebate quota you already have can still be transferred to your balance.'
       }
+    },
+    sms: {
+      title: 'SMS notifications',
+      description:
+        'Send low balance reminders, subscription expiry reminders, and ops alerts and account quota alerts for admins through Tencent Cloud SMS. SMS and email are independent: users with a bound phone get SMS, users with notification emails get email, users with both get both. Recharge, subscription purchase and content moderation notices are never sent by SMS.',
+      enabled: 'Enable SMS notifications',
+      dryRun: 'Log only, do not send',
+      dryRunHint:
+        'Messages are only written to the send log, not sent, so the whole flow can be tried without Tencent Cloud settings. Verification codes show in the send log.',
+      provider: 'Tencent Cloud SMS',
+      providerHint:
+        'Create an application and apply for a signature and templates in the Tencent Cloud SMS console, then fill them in here once approved. The SecretKey is not shown again after saving.',
+      secretId: 'SecretId',
+      secretKey: 'SecretKey',
+      secretKeySet: 'Set; leave empty to keep it',
+      sdkAppId: 'SDK AppID',
+      signName: 'Signature',
+      signNamePlaceholder: 'The approved signature text',
+      region: 'Region',
+      regions: {
+        guangzhou: 'South China (Guangzhou)',
+        beijing: 'North China (Beijing)',
+        nanjing: 'East China (Nanjing)'
+      },
+      templates: 'SMS templates',
+      templatesHint:
+        'Templates must be approved by Tencent Cloud first; the suggested templates below can serve as a starting point. The number and order of variables must match the suggested template. Each variable holds at most 20 characters; longer values are cut.',
+      columns: {
+        send: 'Send',
+        templateId: 'Template ID'
+      },
+      templateIdPlaceholder: 'Template ID',
+      suggested: 'Suggested template',
+      params: 'Variables in order: {params}',
+      copy: 'Copy template',
+      copied: 'Template copied',
+      always: 'On binding',
+      kinds: {
+        verify_code: {
+          name: 'Verification code',
+          hint: 'Used when users bind a phone number on their profile page; without it, no phone can be bound.',
+          params: 'code, minutes valid'
+        },
+        balance_low: {
+          name: 'Low balance reminder',
+          hint: 'Sent when a balance drops below the reminder threshold; the switch and threshold of the low balance reminder above apply. At most one a day per user.',
+          params: 'current balance, threshold'
+        },
+        subscription_expiry: {
+          name: 'Subscription expiry reminder',
+          hint: 'Sent to the bound phone 7, 3 and 1 days before a subscription expires, independently of the reminder email.',
+          params: 'subscription name, expiry time, days left'
+        },
+        ops_alert: {
+          name: 'Ops alert',
+          hint: 'Sent to the admin phones when an ops monitoring alert rule fires; alert silencing applies.',
+          params: 'rule name, severity, current value, threshold'
+        },
+        account_quota: {
+          name: 'Account quota alert',
+          hint: 'Sent to the admin phones when an account reaches its quota alert line; the account quota notification above must be on and the account needs an alert threshold. At most one a day per account and quota.',
+          params: 'account name, quota kind, remaining, limit'
+        }
+      },
+      adminPhones: 'Admin alert phones',
+      adminPhonesHint: 'Ops alerts and account quota alerts go to these numbers. One per line, at most 10, mainland China mobile numbers only.',
+      minLevel: 'Lowest ops alert level',
+      minLevels: {
+        all: 'Every level',
+        info: 'Info (P2, P3) and above',
+        warning: 'Warning (P1) and above',
+        critical: 'Critical (P0) only'
+      },
+      dailyLimit: 'Daily cap',
+      dailyLimitHint:
+        'Notification SMS a user gets a day at most, counted per phone for admin alerts; 0 means no cap. Verification codes and test messages do not count.',
+      dailyLimitUnit: 'messages',
+      save: 'Save SMS settings',
+      saving: 'Saving…',
+      saved: 'SMS settings saved',
+      saveFailed: 'Failed to save the SMS settings',
+      unsaved: 'Unsaved changes',
+      loadFailed: 'Failed to load the SMS settings',
+      retry: 'Retry',
+      showLogs: 'Send log',
+      test: {
+        title: 'Send a test message',
+        hint: 'Fills the chosen template with sample values and sends it to this number using the saved settings; works before SMS notifications are enabled.',
+        phonePlaceholder: 'Phone number to receive the test',
+        send: 'Send test',
+        sending: 'Sending…',
+        saveFirst: 'Save the settings before testing',
+        sent: 'Test message sent',
+        dryRun: 'Written to the send log (log only mode)',
+        failed: 'Sending failed: {error}',
+        requestFailed: 'Failed to send the test message'
+      },
+      validation: {
+        phones: 'Not mainland China mobile numbers: {phones}',
+        tooManyPhones: 'At most 10 admin phones',
+        templateId: 'A template ID is a number such as 1234567',
+        appId: 'The SDK AppID is a number such as 1400000000',
+        dailyLimit: 'The daily cap must be between 0 and 1000',
+        credentials: 'Fill in SecretId, SecretKey, SDK AppID and the signature before enabling, or turn on log only'
+      },
+      log: {
+        title: 'SMS send log',
+        hint: 'Messages of the last 90 days, newest first. Verification codes are not stored, except in log only mode.',
+        searchPlaceholder: 'Search by phone or user email',
+        search: 'Search',
+        empty: 'Nothing sent yet',
+        noMatch: 'No matching messages',
+        loadFailed: 'Failed to load the send log',
+        retry: 'Retry',
+        admin: 'Admin',
+        columns: {
+          time: 'Time',
+          event: 'Kind',
+          phone: 'Phone',
+          user: 'Recipient',
+          content: 'Template and variables',
+          status: 'Status'
+        },
+        events: {
+          verify_code: 'Verification code',
+          test: 'Test',
+          balance_low: 'Low balance',
+          subscription_expiry: 'Subscription expiry',
+          ops_alert: 'Ops alert',
+          account_quota: 'Account quota'
+        },
+        statuses: {
+          pending: 'Sending',
+          sent: 'Sent',
+          failed: 'Failed',
+          dry_run: 'Logged only',
+          limited: 'Over the daily cap'
+        }
+      },
+      user: {
+        title: 'SMS reminders',
+        description:
+          'Once a phone is bound, {events} are also sent to it by SMS, independently of the notification emails. One mainland China mobile number can be bound.',
+        and: ' and ',
+        events: {
+          balance_low: 'low balance reminders',
+          subscription_expiry: 'subscription expiry reminders'
+        },
+        phonePlaceholder: 'Phone number',
+        sendCode: 'Get code',
+        resend: 'Resend',
+        countdown: 'Resend in {seconds}s',
+        codePlaceholder: '6-digit code',
+        bind: 'Verify and bind',
+        cancel: 'Cancel',
+        verified: 'Verified',
+        remove: 'Unbind',
+        codeSent: 'Code sent to {phone}',
+        bound: 'Phone bound',
+        removed: 'Phone unbound',
+        paused: 'SMS reminders paused',
+        resumed: 'SMS reminders resumed',
+        sendFailed: 'Failed to send the code',
+        bindFailed: 'Binding failed',
+        updateFailed: 'Update failed',
+        loadFailed: 'Failed to load the SMS reminders'
+      },
+      errors: {
+        MOK_SMS_UNAVAILABLE: 'SMS reminders are not available',
+        MOK_SMS_PHONE_INVALID: 'Enter a mainland China mobile number',
+        MOK_SMS_CODE_COOLDOWN: 'Too frequent; try again in {seconds} seconds',
+        MOK_SMS_CODE_DAILY_LIMIT: 'No more codes today; try again tomorrow',
+        MOK_SMS_CODE_INVALID: 'The code is wrong',
+        MOK_SMS_CODE_EXPIRED: 'The code has expired; get a new one',
+        MOK_SMS_SEND_FAILED: 'The SMS could not be sent; try again later',
+        MOK_SMS_PHONE_NOT_BOUND: 'No phone number is bound',
+        MOK_SMS_NOT_CONFIGURED: 'Fill in and save the Tencent Cloud settings and the template ID first'
+      }
     }
   }
 }

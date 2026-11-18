@@ -1,0 +1,160 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
+
+import SmsSettings from '../SmsSettings.vue'
+import type { SmsConfigView } from '../../api/sms'
+
+const { getSmsConfig, saveSmsConfig, sendTestSms, showSuccess, showError, copyToClipboard } = vi.hoisted(() => ({
+  getSmsConfig: vi.fn(),
+  saveSmsConfig: vi.fn(),
+  sendTestSms: vi.fn(),
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+  copyToClipboard: vi.fn()
+}))
+
+vi.mock('../../api/sms', () => ({ getSmsConfig, saveSmsConfig, sendTestSms, listSmsLogs: vi.fn() }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess, showError }) }))
+vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard }) }))
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string, named: Record<string, unknown> = {}) =>
+        Object.keys(named).length ? `${key} ${JSON.stringify(named)}` : key
+    })
+  }
+})
+
+const ToggleStub = defineComponent({
+  props: { modelValue: Boolean },
+  emits: ['update:modelValue'],
+  setup(props, { emit, attrs }) {
+    return () =>
+      h('button', { ...attrs, 'data-on': String(props.modelValue), onClick: () => emit('update:modelValue', !props.modelValue) })
+  }
+})
+
+function configView(patch: Partial<SmsConfigView> = {}): SmsConfigView {
+  return {
+    enabled: false,
+    dry_run: false,
+    secret_id: '',
+    secret_key: '',
+    secret_key_set: false,
+    sdk_app_id: '',
+    sign_name: '',
+    region: 'ap-guangzhou',
+    daily_limit: 10,
+    templates: { verify_code: '', balance_low: '', subscription_expiry: '', ops_alert: '', account_quota: '' },
+    events: { balance_low: true, subscription_expiry: true, ops_alert: true, account_quota: true },
+    admin_phones: [],
+    ops_alert_min_level: '',
+    ...patch
+  }
+}
+
+async function mountSettings() {
+  const wrapper = mount(SmsSettings, { global: { stubs: { Toggle: ToggleStub, SmsLogs: true } } })
+  await flushPromises()
+  return wrapper
+}
+
+describe('SmsSettings', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('shows a retry when loading fails', async () => {
+    getSmsConfig.mockRejectedValueOnce(new Error('down'))
+    getSmsConfig.mockResolvedValueOnce(configView())
+    const wrapper = await mountSettings()
+    expect(wrapper.text()).toContain('mok.sms.loadFailed')
+
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="mok-sms-save"]').exists()).toBe(true)
+  })
+
+  it('saves the form, keeping a stored secret key when the field is left empty', async () => {
+    getSmsConfig.mockResolvedValue(
+      configView({ secret_id: 'id', secret_key_set: true, sdk_app_id: '1400000000', sign_name: '站点', admin_phones: ['13800138000'] })
+    )
+    saveSmsConfig.mockImplementation(async (config) => configView({ ...config, secret_key: '', secret_key_set: true }))
+    const wrapper = await mountSettings()
+    expect((wrapper.get('[data-testid="mok-sms-secret-key"]').element as HTMLInputElement).placeholder).toBe('mok.sms.secretKeySet')
+    expect(wrapper.find('[data-testid="mok-sms-unsaved"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="mok-sms-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="mok-sms-template-id-balance_low"]').setValue(' 2002 ')
+    await wrapper.get('[data-testid="mok-sms-event-ops_alert"]').trigger('click')
+    await wrapper.get('[data-testid="mok-sms-admin-phones"]').setValue('13800138000\n+86 139 0013 9000\n13800138000')
+    await wrapper.get('[data-testid="mok-sms-min-level"]').setValue('warning')
+    expect(wrapper.find('[data-testid="mok-sms-unsaved"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="mok-sms-test-send"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
+    await flushPromises()
+
+    const payload = saveSmsConfig.mock.calls[0][0]
+    expect(payload.enabled).toBe(true)
+    expect(payload.secret_key).toBe('')
+    expect(payload.templates.balance_low).toBe(' 2002 ')
+    expect(payload.events.ops_alert).toBe(false)
+    expect(payload.admin_phones).toEqual(['13800138000', '13900139000'])
+    expect(payload.ops_alert_min_level).toBe('warning')
+    expect(showSuccess).toHaveBeenCalledWith('mok.sms.saved')
+    expect(wrapper.find('[data-testid="mok-sms-unsaved"]').exists()).toBe(false)
+  })
+
+  it('refuses invalid input before saving', async () => {
+    getSmsConfig.mockResolvedValue(configView())
+    const wrapper = await mountSettings()
+
+    await wrapper.get('[data-testid="mok-sms-admin-phones"]').setValue('13800138000\n12345')
+    await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
+    expect(showError).toHaveBeenLastCalledWith('mok.sms.validation.phones {"phones":"12345"}')
+
+    await wrapper.get('[data-testid="mok-sms-admin-phones"]').setValue('')
+    await wrapper.get('[data-testid="mok-sms-template-id-verify_code"]').setValue('SMS_1')
+    await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
+    expect(showError).toHaveBeenLastCalledWith('mok.sms.validation.templateId')
+
+    await wrapper.get('[data-testid="mok-sms-template-id-verify_code"]').setValue('1')
+    await wrapper.get('[data-testid="mok-sms-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
+    expect(showError).toHaveBeenLastCalledWith('mok.sms.validation.credentials')
+
+    await wrapper.get('[data-testid="mok-sms-dry-run"]').trigger('click')
+    saveSmsConfig.mockResolvedValue(configView({ enabled: true, dry_run: true }))
+    await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
+    await flushPromises()
+    expect(saveSmsConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a test message with the saved settings', async () => {
+    getSmsConfig.mockResolvedValue(configView({ dry_run: true, templates: { verify_code: '1', balance_low: '2', subscription_expiry: '', ops_alert: '', account_quota: '' } }))
+    sendTestSms.mockResolvedValueOnce({ status: 'dry_run', error: '' })
+    sendTestSms.mockResolvedValueOnce({ status: 'failed', error: 'FailedOperation.TemplateParamSetNotMatchApprovedTemplate' })
+    const wrapper = await mountSettings()
+
+    await wrapper.get('[data-testid="mok-sms-test-phone"]').setValue('13800138000')
+    await wrapper.get('[data-testid="mok-sms-test-kind"]').setValue('balance_low')
+    await wrapper.get('[data-testid="mok-sms-test-send"]').trigger('click')
+    await flushPromises()
+    expect(sendTestSms).toHaveBeenCalledWith('13800138000', 'balance_low')
+    expect(showSuccess).toHaveBeenCalledWith('mok.sms.test.dryRun')
+
+    await wrapper.get('[data-testid="mok-sms-test-send"]').trigger('click')
+    await flushPromises()
+    expect(showError).toHaveBeenCalledWith('mok.sms.test.failed {"error":"FailedOperation.TemplateParamSetNotMatchApprovedTemplate"}')
+  })
+
+  it('copies the suggested template', async () => {
+    getSmsConfig.mockResolvedValue(configView())
+    const wrapper = await mountSettings()
+
+    await wrapper.get('[data-testid="mok-sms-copy-subscription_expiry"]').trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith('您订阅的{1}将于{2}到期，剩余{3}天，请及时续费。', 'mok.sms.copied')
+  })
+})

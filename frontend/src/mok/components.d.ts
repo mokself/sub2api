@@ -7,5 +7,7 @@ declare module 'vue' {
     MokAffiliateSettings: (typeof import('./affiliate/AffiliateSettings.vue'))['default']
     MokAffiliateUserPanel: (typeof import('./affiliate/AffiliateUserPanel.vue'))['default']
     MokUserAffiliateSwitch: (typeof import('./affiliate/UserAffiliateSwitch.vue'))['default']
+    MokSmsSettings: (typeof import('./sms/SmsSettings.vue'))['default']
+    MokSmsNotifyPhone: (typeof import('./sms/SmsNotifyPhone.vue'))['default']
   }
 }

@@ -8858,6 +8858,7 @@
               </div>
             </div>
           </div>
+          <MokSmsSettings /> <!-- [mok] SMS notifications, see FORK.md -->
         </div>
         <!-- /Tab: Email -->
 
