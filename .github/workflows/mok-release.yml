@@ -4,7 +4,9 @@
 #
 # Release: push a tag mok-v<upstream version>.<fork build>, for example mok-v0.2.20.1.
 # It is published as ghcr.io/<owner>/sub2api:0.2.20-mok.1 and :latest, and the admin UI
-# shows version 0.2.20-mok.1.
+# shows version 0.2.20-mok.1. Once the image is pushed, a GitHub release is published for
+# the tag; the admin UI's update check reads the latest of these releases
+# (backend/internal/service/update_service_mok.go).
 name: mok release image
 
 on:
@@ -56,6 +58,9 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - name: Resolve version from tag
         id: meta
@@ -113,3 +118,53 @@ jobs:
             echo "- \`$IMAGE:$VERSION\`"
             echo "- \`$IMAGE:latest\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    # Only after the image is pushed, so the update check never points at a missing image.
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.image.outputs.version }}
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          # actions/checkout can leave an annotated tag as a lightweight one; fetch it again.
+          git fetch --force --tags origin
+          # The previous fork release, for the list of changes.
+          previous=$(git describe --tags --abbrev=0 --match 'mok-v*' "$TAG^" 2>/dev/null || true)
+          {
+            message=$(git tag -l --format='%(contents)' "$TAG" | sed '/^-----BEGIN PGP SIGNATURE-----/,$d')
+            if [ -n "$message" ]; then
+              echo "$message"
+              echo
+            fi
+            echo "镜像 / Image: \`$IMAGE:$VERSION\`"
+            echo
+            echo '更新 / Update: `docker compose pull && docker compose up -d`'
+            if [ -n "$previous" ]; then
+              echo
+              echo "### Changes since $previous"
+              git log --first-parent --format='- %s' "$previous..$TAG"
+            fi
+          } > notes.md
+          # Only the newest fork tag is marked latest, so rebuilding an older tag does not
+          # make the update check offer it.
+          newest=$(git tag --list 'mok-v*' --sort=-v:refname | head -n 1)
+          latest=false
+          if [ "$newest" = "$TAG" ]; then
+            latest=true
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$VERSION" --notes-file notes.md --latest="$latest"
+          else
+            gh release create "$TAG" --title "$VERSION" --notes-file notes.md --verify-tag --latest="$latest"
+          fi

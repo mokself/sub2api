@@ -73,7 +73,7 @@ func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, versi
 		cache:          cache,
 		githubClient:   githubClient,
 		currentVersion: version,
-		buildType:      buildType,
+		buildType:      mokUpdateServiceBuildType(version, buildType), // [mok] was buildType: no online update for fork images, see FORK.md
 	}
 }
 
@@ -139,7 +139,7 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 	}
 
 	// Fetch from GitHub
-	info, err := s.fetchLatestRelease(ctx)
+	info, err := s.mokFetchLatestRelease(ctx) // [mok] was fetchLatestRelease: the fork's releases, see FORK.md
 	if err != nil {
 		// Return cached on error
 		if cached, cacheErr := s.getFromCache(ctx); cacheErr == nil && cached != nil {
@@ -163,6 +163,9 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if err := mokRejectOnlineUpdate(s.currentVersion); err != nil { // [mok] no upstream binaries over the fork, see FORK.md
+		return err
+	}
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -363,6 +366,9 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 // fetchRollbackCandidates fetches recent releases and keeps the newest
 // maxRollbackVersions entries strictly older than the current version.
 func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubRelease, error) {
+	if err := mokRejectOnlineUpdate(s.currentVersion); err != nil { // [mok] no upstream binaries over the fork, see FORK.md
+		return nil, err
+	}
 	releases, err := s.githubClient.FetchRecentReleases(ctx, githubRepo, rollbackFetchPageSize)
 	if err != nil {
 		return nil, err
@@ -611,6 +617,9 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 	if time.Now().Unix()-cached.Timestamp > updateCacheTTL {
 		return nil, fmt.Errorf("cache expired")
 	}
+	if err := mokCheckCachedRelease(s.currentVersion, cached.Latest); err != nil { // [mok] drop upstream results cached before an upgrade, see FORK.md
+		return nil, err
+	}
 
 	return &UpdateInfo{
 		CurrentVersion: s.currentVersion,
@@ -639,6 +648,9 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 
 // compareVersions compares two semantic versions
 func compareVersions(current, latest string) int {
+	if result, ok := mokCompareVersions(current, latest); ok { // [mok] fork versions such as 0.2.21-mok.4, see FORK.md
+		return result
+	}
 	currentParts := parseVersion(current)
 	latestParts := parseVersion(latest)
 

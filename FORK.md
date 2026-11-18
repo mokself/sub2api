@@ -51,6 +51,7 @@ git grep -n "\[mok\]"
 | `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent`；`BindInviterByCode` 里查到邀请人之后加一段 `mokCheckInviterInScope` 调用；`listInvitees` 里的 `maskEmail(...)` 改为 `mokInviteeEmail(...)` | 阶梯返利的计算和比例展示；消耗返利模式下、或邀请人不在开启范围内时 `mokTieredRebateRatePercent` 返回 0，充值不返利；不在开启范围内的用户的邀请码不绑定；邀请返利页的已邀请用户显示完整邮箱。见第 11 节 |
 | `backend/internal/repository/affiliate_repo.go` | 常量 `affiliateCodeLength` 从 12 改为 4 | 系统生成的邀请码长度，见第 11 节 |
 | `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片 |
+| `backend/internal/service/update_service.go` | `NewUpdateService` 的 `buildType:` 一行改为调用 `mokUpdateServiceBuildType`；`CheckUpdate` 里的 `fetchLatestRelease` 改为 `mokFetchLatestRelease`；`PerformUpdate` 和 `fetchRollbackCandidates` 开头各加一段 `mokRejectOnlineUpdate` 检查；`getFromCache` 里加一段 `mokCheckCachedRelease` 检查；`compareVersions` 开头加一段 `mokCompareVersions` | 后台版本徽章检查 fork 自己的发布，不显示发布页链接、不提示上游版本，禁用在线更新和在线回退，见第 9 节 |
 | `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片、消耗返利卡片和「未对你开启」的提示；消耗返利模式下改写页面上讲充值返利的两句话 |
 | `frontend/src/components/admin/user/UserEditModal.vue` | 在 `<UserAttributeForm … />` 下面加 `<MokUserAffiliateSwitch :user-id="user?.id" />` | 用户编辑弹窗里的「邀请返利」开关，见第 11 节 |
 | `frontend/src/components/layout/AppSidebar.vue` | 在 `vue-router` 和 `vue-i18n` 两行 import 之间导入 `mokFilterNavItems`；`finalizeNav()` 里的 `applyFeatureFlags(items)` 外面包一层 `mokFilterNavItems(...)` | 按用户决定是否显示侧边栏的「邀请返利」入口，见第 11 节 |
@@ -340,6 +341,7 @@ git log upstream/main --since="90 days ago" --name-only --pretty=format: | grep 
 fork 的 Docker 镜像由 fork 自己的 `.github/workflows/mok-release.yml` 构建：
 
 - 先跑 fork 的前后端测试，通过后构建 amd64 + arm64 双架构镜像，推到 `ghcr.io/mokself/sub2api`。
+- 镜像推送成功后，再为这个 tag 发布一个 GitHub Release（标题是版本号，正文是 tag 说明、镜像名、更新命令和上一次发版以来的提交）。后台的检查更新读的就是这些 Release，见下面的「后台的版本徽章」。
 - 上游的 `release.yml` 不用它。原因是它由 `v*` tag 触发，发版成功后还会往默认分支推一个修改 `backend/cmd/server/VERSION` 的提交，以后每次同步上游都会在这个文件上冲突。
 
 ### 发一个版本
@@ -388,7 +390,24 @@ docker compose up -d
 ```
 
 - 想固定版本、方便回滚，就把 `latest` 换成具体的标签，比如 `0.2.20-mok.1`。
-- 后台的「在线更新」和「回滚」会从上游 Wei-Shaw/sub2api 下载程序，把 fork 的功能覆盖掉。fork 部署不要用这两个功能，更新一律走「推 tag → `docker compose pull`」这条路。
+- 更新一律走「推 tag → `docker compose pull`」这条路。上游的「在线更新」和「在线回退」会下载上游的程序，覆盖掉 fork 的功能，所以 fork 镜像里已经禁用了，见下一节。
+
+### 后台的版本徽章
+
+后台左上角的版本徽章会检查更新。上游查的是 Wei-Shaw/sub2api 的 Release；fork 镜像改为查 `mokself/sub2api` 的 Release，也就是上面发版时自动发布的那些。
+
+- **判断依据**：版本号里带 `-mok.` 的是 fork 构建（发版工作流打出来的镜像都是）。fork 构建才走下面的逻辑；不带的（本地 `go run`、上游自己的测试）保持上游原样。
+- **版本比较**：先比上游版本，再比 fork 序号，`0.2.21-mok.10` 比 `0.2.21-mok.9` 新；只有上游版本号的当作序号 0。
+- **有新版本时**：徽章上出现提示点，下拉里显示「最新版本: v0.2.21-mok.5」，下面提示「在服务器上运行 `docker compose pull && docker compose up -d`」。没有「立即更新」按钮，也没有指向任何 GitHub 页面的链接（后端只把版本号传给前端，不传发布页地址和更新说明）。
+- **不提示上游版本**：fork 构建不再查上游的 Release。升级前旧版本存进 Redis 的上游检查结果，fork 构建读到时会当作没有缓存、重新查 fork 的 Release，所以升级后也不会短暂显示上游的版本或链接。
+- **回退**：下拉里的「版本回退」只显示提示：把 `docker-compose.yml` 里的镜像标签改成旧版本再重启。
+- **接口**：`POST /api/v1/admin/system/update` 和 `/rollback`（指定版本时）、`GET /api/v1/admin/system/rollback-versions` 对 fork 构建一律拒绝，错误码 `MOK_ONLINE_UPDATE_UNAVAILABLE`，不会下载任何东西。
+- **做法**：后端在 `backend/internal/service/update_service_mok.go`；fork 构建向前端报告的构建类型是 `source`，所以前端走上游现成的「源码构建」界面，只是把那两句提示换成了 Docker 的说法（`frontend/src/mok/i18n/upstreamOverrides.ts`）。前端没有改上游文件。
+- **注意**：
+  - `mok-v0.2.23.1` 之前的 tag 没有 Release。第一个带这项改动的版本发布后，检查更新才有东西可查；在那之前查不到 Release，徽章显示「已是最新版本」。
+  - 检查结果在 Redis 里缓存 20 分钟，刚发版时可以点下拉右上角的刷新按钮立即重查。
+  - 发版工作流仍然会发布 GitHub Release，检查更新要靠它；只是后台不再链接过去。
+  - 仓库名写死在 `update_service_mok.go` 的 `mokGitHubRepo` 里，换仓库要改这里。仓库如果改成私有，未登录的 GitHub API 查不到 Release，徽章会一直显示「已是最新版本」。
 
 ## 10. 本地开发注意事项
 

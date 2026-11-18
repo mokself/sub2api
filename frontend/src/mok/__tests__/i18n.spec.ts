@@ -6,6 +6,7 @@ import upstreamZh from '@/i18n/locales/zh'
 import { setAffiliateUsageWording } from '../i18n'
 import affiliateUsageWording from '../i18n/affiliateUsageWording'
 import en from '../i18n/en'
+import upstreamOverrides from '../i18n/upstreamOverrides'
 import zh from '../i18n/zh'
 
 // Upstream's locale completeness test only knows upstream locale files, so fork code
@@ -100,5 +101,36 @@ describe('affiliate usage wording', () => {
     setAffiliateUsageWording(true)
     setAffiliateUsageWording(false)
     expect(i18n.global.t(key, { rate: '10%' })).toBe(upstreamText)
+  })
+})
+
+describe('upstream sentences the fork rewords for good', () => {
+  const upstream: Record<string, Record<string, unknown>> = { en: upstreamEn, zh: upstreamZh }
+  const placeholders = (text: unknown) => [...String(text).matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
+
+  it('rewords the same keys in English and Chinese', () => {
+    expect(Object.keys(upstreamOverrides).sort()).toEqual(['en', 'zh'])
+    expect(Object.keys(flattenLeaves(upstreamOverrides.zh)).sort()).toEqual(
+      Object.keys(flattenLeaves(upstreamOverrides.en)).sort()
+    )
+  })
+
+  it('only rewords upstream sentences that still exist, keeping their placeholders', () => {
+    for (const [locale, overrides] of Object.entries(upstreamOverrides)) {
+      const upstreamLeaves = flattenLeaves(upstream[locale])
+      for (const [key, text] of Object.entries(flattenLeaves(overrides))) {
+        expect(key in upstreamLeaves, `${locale}: ${key}`).toBe(true)
+        expect(typeof text === 'string' && text.trim() !== '', `${locale}: ${key}`).toBe(true)
+        expect(placeholders(text), `${locale}: ${key}`).toEqual(placeholders(upstreamLeaves[key]))
+      }
+    }
+  })
+
+  it('does not overlap the usage rebate wording, which comes and goes', () => {
+    for (const locale of Object.keys(upstreamOverrides)) {
+      const always = Object.keys(flattenLeaves(upstreamOverrides[locale]))
+      const switched = Object.keys(flattenLeaves(affiliateUsageWording[locale] ?? {}))
+      expect(always.filter((key) => switched.includes(key))).toEqual([])
+    }
   })
 })

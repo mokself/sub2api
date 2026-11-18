@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { i18n } from '@/i18n'
 import affiliateUsageWording from './affiliateUsageWording'
 import en from './en'
+import upstreamOverrides from './upstreamOverrides'
 import zh from './zh'
 
 export const mokMessages: Record<string, Record<string, any>> = { en, zh }
@@ -42,6 +43,10 @@ function mergeMokMessages(locale: string): void {
   const messages = mokMessages[locale]
   if (messages) {
     i18n.global.mergeLocaleMessage(locale, messages)
+  }
+  const overrides = upstreamOverrides[locale]
+  if (overrides) {
+    i18n.global.mergeLocaleMessage(locale, overrides)
   }
   if (affiliateUsageWordingOn) {
     applyUsageWording(locale)
