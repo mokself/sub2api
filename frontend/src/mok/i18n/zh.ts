@@ -325,6 +325,31 @@ export default {
         MOK_SMS_PHONE_NOT_BOUND: '还没有绑定手机号',
         MOK_SMS_NOT_CONFIGURED: '先填好并保存腾讯云配置和所选模板的 ID'
       }
+    },
+    paymentQuickAmounts: {
+      title: '充值快捷金额',
+      description:
+        '充值页上可以直接点选的金额按钮。不设置时使用默认的 {defaults}。超出支付方式最低、最高金额的按钮仍会自动隐藏，充值优惠阶梯的价签照常显示在对应按钮上。',
+      label: '快捷金额',
+      placeholder: '例如：30, 50, 100, 200, 500',
+      hint: '用逗号或空格分隔，最多 12 个，最多两位小数；保存后按从小到大排列。清空后保存即恢复默认。',
+      preview: '预览',
+      usingDefault: '（默认金额）',
+      save: '保存',
+      saving: '保存中…',
+      saved: '快捷金额已保存',
+      saveFailed: '快捷金额保存失败',
+      reset: '恢复默认',
+      resetDone: '已恢复默认快捷金额',
+      unsaved: '有未保存的修改',
+      loadFailed: '快捷金额加载失败',
+      retry: '重试',
+      errors: {
+        invalid: '无法识别「{value}」，请填写数字',
+        range: '「{value}」超出范围：金额要大于 0，且不超过 1000000',
+        decimals: '「{value}」的小数超过两位',
+        tooMany: '最多 {max} 个金额'
+      }
     }
   }
 }

@@ -1,6 +1,7 @@
 import { defineAsyncComponent, type App } from 'vue'
 import { installAffiliateAccess } from './affiliate/access'
 import { installMokI18n } from './i18n'
+import { installPaymentQuickAmounts } from './payment/quickAmounts'
 
 /**
  * Entry point of the fork's frontend features (see FORK.md). main.ts calls it after
@@ -13,6 +14,7 @@ import { installMokI18n } from './i18n'
 export async function installMok(app: App): Promise<void> {
   installMokI18n()
   installAffiliateAccess()
+  installPaymentQuickAmounts(app)
   app.component(
     'MokAffiliateSettings',
     defineAsyncComponent(() => import('./affiliate/AffiliateSettings.vue'))
@@ -27,4 +29,8 @@ export async function installMok(app: App): Promise<void> {
   )
   app.component('MokSmsSettings', defineAsyncComponent(() => import('./sms/SmsSettings.vue')))
   app.component('MokSmsNotifyPhone', defineAsyncComponent(() => import('./sms/SmsNotifyPhone.vue')))
+  app.component(
+    'MokPaymentQuickAmounts',
+    defineAsyncComponent(() => import('./payment/PaymentQuickAmounts.vue'))
+  )
 }

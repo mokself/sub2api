@@ -50,7 +50,7 @@ git grep -n "\[mok\]"
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
 | `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent`；`BindInviterByCode` 里查到邀请人之后加一段 `mokCheckInviterInScope` 调用；`listInvitees` 里的 `maskEmail(...)` 改为 `mokInviteeEmail(...)` | 阶梯返利的计算和比例展示；消耗返利模式下、或邀请人不在开启范围内时 `mokTieredRebateRatePercent` 返回 0，充值不返利；不在开启范围内的用户的邀请码不绑定；邀请返利页的已邀请用户显示完整邮箱。见第 11 节 |
 | `backend/internal/repository/affiliate_repo.go` | 常量 `affiliateCodeLength` 从 12 改为 4 | 系统生成的邀请码长度，见第 11 节 |
-| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />`；在「邮件设置」标签页末尾（`<!-- /Tab: Email -->` 上一行的 `</div>` 之前）加 `<MokSmsSettings />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片；邮件设置里的「短信通知」卡片，见第 11 节 |
+| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />`；在「邮件设置」标签页末尾（`<!-- /Tab: Email -->` 上一行的 `</div>` 之前）加 `<MokSmsSettings />`；在「充值优惠阶梯」注释上方加 `<MokPaymentQuickAmounts v-if="form.payment_enabled" />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片；邮件设置里的「短信通知」卡片；支付设置里的「充值快捷金额」卡片。见第 11 节 |
 | `backend/internal/service/update_service.go` | `NewUpdateService` 的 `buildType:` 一行改为调用 `mokUpdateServiceBuildType`；`CheckUpdate` 里的 `fetchLatestRelease` 改为 `mokFetchLatestRelease`；`PerformUpdate` 和 `fetchRollbackCandidates` 开头各加一段 `mokRejectOnlineUpdate` 检查；`getFromCache` 里加一段 `mokCheckCachedRelease` 检查；`compareVersions` 开头加一段 `mokCompareVersions` | 后台版本徽章检查 fork 自己的发布，不显示发布页链接、不提示上游版本，禁用在线更新和在线回退，见第 9 节 |
 | `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片、消耗返利卡片和「未对你开启」的提示；消耗返利模式下改写页面上讲充值返利的两句话 |
 | `frontend/src/components/admin/user/UserEditModal.vue` | 在 `<UserAttributeForm … />` 下面加 `<MokUserAffiliateSwitch :user-id="user?.id" />` | 用户编辑弹窗里的「邀请返利」开关，见第 11 节 |
@@ -58,6 +58,7 @@ git grep -n "\[mok\]"
 | `backend/internal/service/ops_alert_evaluator_service.go` | `evaluateOnce` 里 `eventsCreated++` 下面加一行 `mokSendOpsAlertSMS` | 运维告警的短信，见第 11 节 |
 | `frontend/src/components/user/profile/ProfileBalanceNotifyCard.vue` | 在 `v-if="notifyEnabled"` 那段的 `</template>` 下面加 `<MokSmsNotifyPhone />` | 余额不足提醒卡片里「通知邮箱」下面的「短信提醒」，见第 11 节 |
 | `frontend/src/views/user/ProfileView.vue` | 在 `<ProfileTotpCard />` 上面加 `<MokSmsNotifyPhone v-if="user && !balanceLowNotifyEnabled" standalone />` | 管理员关掉余额不足提醒时，个人资料页单独显示「短信提醒」卡片，用于订阅到期提醒 |
+| `frontend/src/views/user/PaymentView.vue` | `<AmountInput>` 的 `:amounts="[10, 20, ...]"` 一行改为 `($mokQuickAmounts ?? ((amounts) => amounts))([10, 20, ...])` | 充值页的快捷金额按钮改用后台设置的金额，见第 11 节 |
 | `frontend/src/components/layout/AppSidebar.vue` | 在 `vue-router` 和 `vue-i18n` 两行 import 之间导入 `mokFilterNavItems`；`finalizeNav()` 里的 `applyFeatureFlags(items)` 外面包一层 `mokFilterNavItems(...)` | 按用户决定是否显示侧边栏的「邀请返利」入口，见第 11 节 |
 
 ## 3. 先看能不能零代码
@@ -156,6 +157,8 @@ import { installMok } from './mok' // [mok] fork features, see FORK.md
 以后新增的 fork 前端功能都在 `installMok` 里接入，不用再改 `main.ts`。
 
 **往上游页面里插组件**：在 `installMok` 里用 `app.component('MokXxx', defineAsyncComponent(...))` 注册成全局异步组件，再到 `src/mok/components.d.ts` 的 `GlobalComponents` 里声明类型。这样上游模板里只要加一行 `<MokXxx />`，不用在上游文件的 `<script>` 里加 import；import 区是上游经常改的地方，容易冲突。上游的单元测试不认识这个组件，Vue 会打印一条 resolve 警告，测试照常通过。
+
+**往上游模板里要一个值**：组件塞不进属性里时，在 `installMok` 里用 `app.config.globalProperties.$mokXxx = ...` 注册一个全局函数，在 `components.d.ts` 的 `ComponentCustomProperties` 里声明类型，上游模板里只改那一个属性。写成 `($mokXxx ?? ((value) => value))(上游原值)`：上游自己的单元测试挂载页面时不会跑 `installMok`，这样写能退回上游原值，测试照常通过（Vue 会打印一条属性未定义的警告）。标记写在表达式里的注释中，例如 `/* [mok] ... */`。现有的例子是充值页的 `$mokQuickAmounts`。
 
 ### 5.2 路由
 
@@ -650,3 +653,18 @@ docker compose up -d
 - **接入点的合并模拟**：用上游过去一年的提交回放。
   - `balance_notify_service.go` 的两处、`ops_alert_evaluator_service.go`、`ProfileBalanceNotifyCard.vue`、`SettingsView.vue` 的接入点都能干净合并。唯一的例外是 `CheckAccountQuotaAfterIncrement` 开头那处：2026-04 上游修改这个函数签名的那次提交会冲突一次。
   - `ProfileView.vue` 在 2026-04 上游重做个人资料页时会冲突两次，接入点放在这个文件的任何位置都避不开。
+
+### 充值快捷金额（2026-11-19）
+
+上游充值页上的快捷金额按钮是写死的：10、20、50、100、200、500、1000、2000、5000。现在可以在后台改。
+
+- **怎么用**：系统设置 → 支付设置，「充值优惠阶梯」上方的「充值快捷金额」卡片（打开支付后才显示）。卡片单独保存，页面右下角的「保存设置」不管这张卡片。
+  - 填一串金额，用逗号或空格分隔，例如 `30, 50, 100, 200, 500`。最多 12 个，每个大于 0、不超过 1000000、最多两位小数；保存后去重、按从小到大排列。
+  - 卡片上有预览。清空后保存，或点「恢复默认」，就回到上游的 9 档。
+- **和上游功能的关系**：超出支付方式单笔最低、最高金额的按钮照样隐藏；充值优惠阶梯的价签照常显示在对应按钮上；自定义金额输入框不受影响。
+- **用户这边**：充值页第一次渲染时请求一次列表，结果缓存在浏览器的 `localStorage` 里（键 `mok_payment_quick_amounts`），所以再打开页面不会先闪一下默认按钮。管理员改了之后，用户刷新页面就能看到。
+- **存储与接口**：
+  - 存在 `settings` 表的 `mok_payment_quick_amounts` 键里（JSON 数组），没有新的迁移。
+  - `GET` / `PUT /api/v1/mok/admin/payment/quick-amounts`，`PUT` 的请求体是 `{"amounts": [30, 50, 100]}`，`[]` 表示恢复默认；用户端 `GET /api/v1/mok/payment/quick-amounts`。
+- **代码位置**：后端 `backend/internal/mok/payment_quick_amounts.go`；前端 `frontend/src/mok/payment/` 下的 `quickAmounts.ts`（全局函数 `$mokQuickAmounts`、解析、缓存）和 `PaymentQuickAmounts.vue`（设置卡片），接口封装在 `frontend/src/mok/api/paymentQuickAmounts.ts`。
+- **接入点的合并模拟**：用上游过去一年的提交回放。`PaymentView.vue` 那一行在 2026-04 上游两次重做支付页时会冲突，之后的 40 次提交都能干净合并；`SettingsView.vue` 的接入点没有冲突。

@@ -24,6 +24,7 @@ var ProviderSet = wire.NewSet(
 	NewSMSStore,
 	NewTencentSMSSender,
 	NewSMSService,
+	NewPaymentQuickAmountsService,
 	NewModule,
 )
 
@@ -77,6 +78,7 @@ func NewModule(
 	claudePlan *ClaudePlanService,
 	affiliateUsageRebate *service.MokAffiliateUsageRebateService,
 	sms *SMSService,
+	paymentQuickAmounts *PaymentQuickAmountsService,
 ) *Module {
 	panelRateLimiter := middleware.NewPanelRateLimiter(redisClient, settingService)
 
@@ -102,6 +104,7 @@ func NewModule(
 	registerAffiliateModeRoutes(admin, user, affiliateUsageRebate)
 	registerAffiliateScopeRoutes(admin, user, affiliateService)
 	registerSMSRoutes(admin, user, sms)
+	registerPaymentQuickAmountsRoutes(admin, user, paymentQuickAmounts)
 
 	affiliateUsageRebate.Start()
 	// The SMS channel of upstream's notifications, see service/sms_notify_mok.go.

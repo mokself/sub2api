@@ -9,5 +9,11 @@ declare module 'vue' {
     MokUserAffiliateSwitch: (typeof import('./affiliate/UserAffiliateSwitch.vue'))['default']
     MokSmsSettings: (typeof import('./sms/SmsSettings.vue'))['default']
     MokSmsNotifyPhone: (typeof import('./sms/SmsNotifyPhone.vue'))['default']
+    MokPaymentQuickAmounts: (typeof import('./payment/PaymentQuickAmounts.vue'))['default']
+  }
+
+  export interface ComponentCustomProperties {
+    /** The recharge page's quick amounts, see ./payment/quickAmounts.ts. */
+    $mokQuickAmounts: (defaults: number[]) => number[]
   }
 }

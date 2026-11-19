@@ -8413,6 +8413,7 @@
             </div>
           </div>
 
+          <MokPaymentQuickAmounts v-if="form.payment_enabled" /> <!-- [mok] recharge quick amounts, see FORK.md -->
           <!-- 充值优惠阶梯（独立卡片，与服务商管理同级） -->
           <RechargeBonusTierEditor
             v-if="form.payment_enabled"

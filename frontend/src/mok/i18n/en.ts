@@ -329,6 +329,31 @@ export default {
         MOK_SMS_PHONE_NOT_BOUND: 'No phone number is bound',
         MOK_SMS_NOT_CONFIGURED: 'Fill in and save the Tencent Cloud settings and the template ID first'
       }
+    },
+    paymentQuickAmounts: {
+      title: 'Recharge quick amounts',
+      description:
+        'The amount buttons users can pick on the recharge page. Without a list, the default {defaults} are shown. Buttons outside the payment methods\' minimum and maximum are still hidden, and recharge bonus tiers still show their tags on the matching buttons.',
+      label: 'Quick amounts',
+      placeholder: 'For example: 30, 50, 100, 200, 500',
+      hint: 'Separate with commas or spaces; at most 12 amounts with up to 2 decimals, sorted ascending when saved. Save an empty field to restore the defaults.',
+      preview: 'Preview',
+      usingDefault: '(defaults)',
+      save: 'Save',
+      saving: 'Saving…',
+      saved: 'Quick amounts saved',
+      saveFailed: 'Failed to save the quick amounts',
+      reset: 'Restore defaults',
+      resetDone: 'Default quick amounts restored',
+      unsaved: 'Unsaved changes',
+      loadFailed: 'Failed to load the quick amounts',
+      retry: 'Retry',
+      errors: {
+        invalid: '"{value}" is not a number',
+        range: '"{value}" is out of range: amounts must be greater than 0 and at most 1000000',
+        decimals: '"{value}" has more than 2 decimals',
+        tooMany: 'At most {max} amounts'
+      }
     }
   }
 }
