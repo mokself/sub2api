@@ -11,8 +11,12 @@ const smsLogsMaxPageSize = 100
 
 // registerSMSRoutes serves the SMS channel (sms_service.go):
 //
-//	GET    /api/v1/mok/admin/sms/config   the settings; the secret key is never returned
-//	PUT    /api/v1/mok/admin/sms/config   save the settings; an empty secret_key keeps the stored one
+//	GET    /api/v1/mok/admin/sms/config         the SMS card; the secret key is never returned
+//	PUT    /api/v1/mok/admin/sms/config         save the SMS card; an empty secret_key keeps the stored one
+//	GET    /api/v1/mok/admin/sms/ops-alert      the SMS part of the ops alert settings
+//	PUT    /api/v1/mok/admin/sms/ops-alert      {"enabled", "phones", "min_level"}
+//	GET    /api/v1/mok/admin/sms/account-quota  the SMS phones of the account quota alerts
+//	PUT    /api/v1/mok/admin/sms/account-quota  {"phones": [{"phone", "disabled"}]}
 //	POST   /api/v1/mok/admin/sms/test     {"phone", "event"}: send one template with sample values
 //	GET    /api/v1/mok/admin/sms/logs     the send log; page, page_size, search
 //	GET    /api/v1/mok/sms/phone          the signed-in user's bound phone and whether SMS is available
@@ -24,6 +28,10 @@ func registerSMSRoutes(admin, user *gin.RouterGroup, sms *SMSService) {
 	h := &smsHandler{sms: sms}
 	admin.GET("/sms/config", h.getConfig)
 	admin.PUT("/sms/config", h.putConfig)
+	admin.GET("/sms/ops-alert", h.getOpsAlert)
+	admin.PUT("/sms/ops-alert", h.putOpsAlert)
+	admin.GET("/sms/account-quota", h.getAccountQuota)
+	admin.PUT("/sms/account-quota", h.putAccountQuota)
 	admin.POST("/sms/test", h.test)
 	admin.GET("/sms/logs", h.logs)
 	user.GET("/sms/phone", h.phone)
@@ -56,6 +64,48 @@ func (h *smsHandler) putConfig(c *gin.Context) {
 		return
 	}
 	response.Success(c, cfg)
+}
+
+func (h *smsHandler) getOpsAlert(c *gin.Context) {
+	ops, err := h.sms.AdminOpsAlert(c.Request.Context())
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, ops)
+}
+
+func (h *smsHandler) putOpsAlert(c *gin.Context) {
+	var req SMSOpsAlert
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	ops, err := h.sms.SaveOpsAlert(c.Request.Context(), req)
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, ops)
+}
+
+func (h *smsHandler) getAccountQuota(c *gin.Context) {
+	quota, err := h.sms.AdminAccountQuota(c.Request.Context())
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, quota)
+}
+
+func (h *smsHandler) putAccountQuota(c *gin.Context) {
+	var req SMSAccountQuota
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	quota, err := h.sms.SaveAccountQuota(c.Request.Context(), req)
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, quota)
 }
 
 func (h *smsHandler) test(c *gin.Context) {

@@ -29,6 +29,11 @@ export async function installMok(app: App): Promise<void> {
   )
   app.component('MokSmsSettings', defineAsyncComponent(() => import('./sms/SmsSettings.vue')))
   app.component('MokSmsNotifyPhone', defineAsyncComponent(() => import('./sms/SmsNotifyPhone.vue')))
+  app.component('MokOpsAlertSms', defineAsyncComponent(() => import('./sms/OpsAlertSms.vue')))
+  app.component(
+    'MokAccountQuotaSmsPhones',
+    defineAsyncComponent(() => import('./sms/AccountQuotaSmsPhones.vue'))
+  )
   app.component(
     'MokPaymentQuickAmounts',
     defineAsyncComponent(() => import('./payment/PaymentQuickAmounts.vue'))

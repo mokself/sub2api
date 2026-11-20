@@ -77,11 +77,11 @@
               <div class="min-w-[9rem] flex-1">
                 <div class="text-sm font-medium text-gray-900 dark:text-white">{{ mt(`sms.kinds.${kind}.name`) }}</div>
               </div>
-              <div v-if="kind !== 'verify_code'" class="flex items-center gap-2">
+              <div v-if="isUserEvent(kind)" class="flex items-center gap-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ mt('sms.columns.send') }}</span>
                 <Toggle v-model="form.events[kind]" :data-testid="`mok-sms-event-${kind}`" />
               </div>
-              <span v-else class="text-xs text-gray-400 dark:text-gray-500">{{ mt('sms.always') }}</span>
+              <span v-else class="text-xs text-gray-400 dark:text-gray-500">{{ mt(`sms.kinds.${kind}.switchedAt`) }}</span>
               <input
                 v-model="form.templates[kind]"
                 type="text"
@@ -111,18 +111,7 @@
         </div>
       </section>
 
-      <section class="grid grid-cols-1 gap-4 border-t border-gray-100 pt-6 dark:border-dark-700 md:grid-cols-2">
-        <div class="md:row-span-2">
-          <label class="input-label">{{ mt('sms.adminPhones') }}</label>
-          <textarea v-model="adminPhonesText" rows="4" class="input font-mono" placeholder="13800000000" data-testid="mok-sms-admin-phones"></textarea>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ mt('sms.adminPhonesHint') }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ mt('sms.minLevel') }}</label>
-          <select v-model="form.ops_alert_min_level" class="input" data-testid="mok-sms-min-level">
-            <option v-for="level in minLevels" :key="level.value" :value="level.value">{{ level.label }}</option>
-          </select>
-        </div>
+      <section class="border-t border-gray-100 pt-6 dark:border-dark-700">
         <div>
           <label class="input-label">{{ mt('sms.dailyLimit') }}</label>
           <div class="flex items-center gap-2">
@@ -181,13 +170,13 @@ import {
   sendTestSms,
   type SmsConfig,
   type SmsConfigView,
-  type SmsMinLevel,
   type SmsRegion,
-  type SmsTemplateKind
+  type SmsTemplateKind,
+  type SmsUserEvent
 } from '../api/sms'
 import { useMokI18n } from '../i18n'
 import SmsLogs from './SmsLogs.vue'
-import { isSmsTemplateId, parseSmsPhoneLines, smsErrorMessage, smsSuggestedTemplates, smsTemplateKinds } from './sms'
+import { isSmsTemplateId, smsErrorMessage, smsSuggestedTemplates, smsTemplateKinds, smsUserEvents } from './sms'
 
 const { mt } = useMokI18n()
 const appStore = useAppStore()
@@ -200,12 +189,11 @@ const regions = computed<{ value: SmsRegion; label: string }[]>(() => [
   { value: 'ap-beijing', label: mt('sms.regions.beijing') },
   { value: 'ap-nanjing', label: mt('sms.regions.nanjing') }
 ])
-const minLevels = computed<{ value: SmsMinLevel; label: string }[]>(() => [
-  { value: '', label: mt('sms.minLevels.all') },
-  { value: 'info', label: mt('sms.minLevels.info') },
-  { value: 'warning', label: mt('sms.minLevels.warning') },
-  { value: 'critical', label: mt('sms.minLevels.critical') }
-])
+
+/** The user notifications have a switch here; the admin alerts are switched where their phones are set. */
+function isUserEvent(kind: SmsTemplateKind): kind is SmsUserEvent {
+  return (smsUserEvents as string[]).includes(kind)
+}
 
 const loading = ref(true)
 const loaded = ref(false)
@@ -214,7 +202,6 @@ const testing = ref(false)
 const showLogs = ref(false)
 const secretKeySet = ref(false)
 const secretKeyInput = ref('')
-const adminPhonesText = ref('')
 const testPhone = ref('')
 const testKind = ref<SmsTemplateKind>('verify_code')
 // What the form held right after loading or saving, to tell unsaved changes apart.
@@ -233,14 +220,12 @@ function emptyConfig(): SmsConfig {
     region: 'ap-guangzhou',
     daily_limit: 10,
     templates: { verify_code: '', balance_low: '', subscription_expiry: '', ops_alert: '', account_quota: '' },
-    events: { balance_low: true, subscription_expiry: true, ops_alert: true, account_quota: true },
-    admin_phones: [],
-    ops_alert_min_level: ''
+    events: { balance_low: true, subscription_expiry: true }
   }
 }
 
 function snapshot(): string {
-  return JSON.stringify({ form, adminPhones: adminPhonesText.value.trim(), secretKey: secretKeyInput.value })
+  return JSON.stringify({ form, secretKey: secretKeyInput.value })
 }
 
 const dirty = computed(() => loaded.value && snapshot() !== savedSnapshot.value)
@@ -252,13 +237,10 @@ function apply(view: SmsConfigView): void {
     ...view,
     secret_key: '',
     templates: { ...base.templates, ...view.templates },
-    events: { ...base.events, ...view.events },
-    admin_phones: [...(view.admin_phones ?? [])],
-    ops_alert_min_level: view.ops_alert_min_level ?? ''
+    events: { balance_low: view.events?.balance_low ?? true, subscription_expiry: view.events?.subscription_expiry ?? true }
   })
   secretKeySet.value = view.secret_key_set
   secretKeyInput.value = ''
-  adminPhonesText.value = (view.admin_phones ?? []).join('\n')
   savedSnapshot.value = snapshot()
 }
 
@@ -277,13 +259,10 @@ async function load(): Promise<void> {
 
 /** Checks the form; returns the payload or shows the first problem. */
 function validate(): SmsConfig | null {
-  const { phones, invalid } = parseSmsPhoneLines(adminPhonesText.value)
   const fail = (message: string) => {
     appStore.showError(message)
     return null
   }
-  if (invalid.length > 0) return fail(mt('sms.validation.phones', { phones: invalid.join('、') }))
-  if (phones.length > 10) return fail(mt('sms.validation.tooManyPhones'))
   if (Object.values(form.templates).some((id) => !isSmsTemplateId(id))) return fail(mt('sms.validation.templateId'))
   if (form.sdk_app_id.trim() !== '' && !/^\d+$/.test(form.sdk_app_id.trim())) return fail(mt('sms.validation.appId'))
   const limit = Number(form.daily_limit)
@@ -296,8 +275,7 @@ function validate(): SmsConfig | null {
     secret_key: secretKeyInput.value.trim(),
     daily_limit: limit,
     templates: { ...form.templates },
-    events: { ...form.events },
-    admin_phones: phones
+    events: { ...form.events }
   }
 }
 

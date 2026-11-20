@@ -8857,6 +8857,7 @@
                   {{ t("admin.settings.quotaNotify.emailsHint") }}
                 </p>
               </div>
+              <MokAccountQuotaSmsPhones v-if="form.account_quota_notify_enabled" /> <!-- [mok] SMS phones, see FORK.md -->
             </div>
           </div>
           <MokSmsSettings /> <!-- [mok] SMS notifications, see FORK.md -->
@@ -8980,6 +8981,7 @@ import type {
 } from "@/types";
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
+import { mokSaveAccountQuotaSms } from "@/mok/sms/adminAlerts"; // [mok] SMS phones, see FORK.md
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
 import {
@@ -11895,6 +11897,7 @@ async function saveSettings() {
     // Refresh cached settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);
+    await mokSaveAccountQuotaSms(); // [mok] SMS phones, see FORK.md
     if (wsOk) {
       appStore.showSuccess(t("admin.settings.settingsSaved"));
     }

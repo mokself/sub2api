@@ -44,49 +44,65 @@ func readyConfig() SMSConfig {
 	cfg.Enabled = true
 	cfg.SecretID, cfg.SecretKey, cfg.SDKAppID, cfg.SignName = "id", "key", "1400000000", "测试站"
 	cfg.Templates = SMSTemplates{VerifyCode: "1", BalanceLow: "2", SubscriptionExpiry: "3", OpsAlert: "4", AccountQuota: "5"}
-	cfg.AdminPhones = []string{"13800138000"}
 	return cfg
 }
 
-func TestSMSConfigWants(t *testing.T) {
-	cfg := readyConfig()
-	for _, event := range []string{service.MokSMSEventBalanceLow, service.MokSMSEventSubscriptionExpiry, service.MokSMSEventOpsAlert, service.MokSMSEventAccountQuota} {
-		require.True(t, cfg.wants(event), event)
+func readySettings() smsSettings {
+	return smsSettings{
+		cfg:   readyConfig(),
+		ops:   SMSOpsAlert{Enabled: true, Phones: []string{"13800138000"}},
+		quota: SMSAccountQuota{Phones: []SMSQuotaPhone{{Phone: "13900139000"}, {Phone: "13900139001", Disabled: true}}},
 	}
-	require.False(t, cfg.wants(smsEventVerifyCode), "not a notification")
-	require.True(t, cfg.bindingAvailable())
+}
 
-	off := cfg
-	off.Enabled = false
+func TestSMSSettingsWants(t *testing.T) {
+	s := readySettings()
+	for _, event := range []string{service.MokSMSEventBalanceLow, service.MokSMSEventSubscriptionExpiry, service.MokSMSEventOpsAlert, service.MokSMSEventAccountQuota} {
+		require.True(t, s.wants(event), event)
+	}
+	require.False(t, s.wants(smsEventVerifyCode), "not a notification")
+	require.True(t, s.bindingAvailable())
+	require.Equal(t, []string{"13800138000"}, s.recipients(service.MokSMSEventOpsAlert))
+	require.Equal(t, []string{"13900139000"}, s.recipients(service.MokSMSEventAccountQuota), "switched-off phones get nothing")
+	require.Nil(t, s.recipients(service.MokSMSEventBalanceLow))
+
+	off := readySettings()
+	off.cfg.Enabled = false
 	require.False(t, off.wants(service.MokSMSEventBalanceLow))
+	require.False(t, off.wants(service.MokSMSEventOpsAlert))
 	require.False(t, off.bindingAvailable())
 
-	noCredentials := cfg
-	noCredentials.SecretKey = ""
+	noCredentials := readySettings()
+	noCredentials.cfg.SecretKey = ""
 	require.False(t, noCredentials.wants(service.MokSMSEventBalanceLow))
-	noCredentials.DryRun = true
+	noCredentials.cfg.DryRun = true
 	require.True(t, noCredentials.wants(service.MokSMSEventBalanceLow), "dry-run mode needs no credentials")
 
-	switchedOff := cfg
-	switchedOff.Events.SubscriptionExpiry = false
+	switchedOff := readySettings()
+	switchedOff.cfg.Events.SubscriptionExpiry = false
 	require.False(t, switchedOff.wants(service.MokSMSEventSubscriptionExpiry))
 
-	noTemplate := cfg
-	noTemplate.Templates.OpsAlert = ""
+	noTemplate := readySettings()
+	noTemplate.cfg.Templates.OpsAlert = ""
 	require.False(t, noTemplate.wants(service.MokSMSEventOpsAlert))
+	require.False(t, noTemplate.cfg.ready(service.MokSMSEventOpsAlert))
 
-	noAdmins := cfg
-	noAdmins.AdminPhones = nil
-	require.False(t, noAdmins.wants(service.MokSMSEventOpsAlert))
-	require.False(t, noAdmins.wants(service.MokSMSEventAccountQuota))
-	require.True(t, noAdmins.wants(service.MokSMSEventBalanceLow))
+	opsOff := readySettings()
+	opsOff.ops.Enabled = false
+	require.False(t, opsOff.wants(service.MokSMSEventOpsAlert))
+	require.True(t, opsOff.wants(service.MokSMSEventAccountQuota), "the two admin alerts are separate")
 
-	noVerify := cfg
-	noVerify.Templates.VerifyCode = ""
+	noQuotaPhones := readySettings()
+	noQuotaPhones.quota.Phones = []SMSQuotaPhone{{Phone: "13900139000", Disabled: true}}
+	require.False(t, noQuotaPhones.wants(service.MokSMSEventAccountQuota))
+	require.True(t, noQuotaPhones.wants(service.MokSMSEventOpsAlert))
+
+	noVerify := readySettings()
+	noVerify.cfg.Templates.VerifyCode = ""
 	require.False(t, noVerify.bindingAvailable(), "users cannot bind without codes")
 
-	adminOnly := cfg
-	adminOnly.Events.BalanceLow, adminOnly.Events.SubscriptionExpiry = false, false
+	adminOnly := readySettings()
+	adminOnly.cfg.Events.BalanceLow, adminOnly.cfg.Events.SubscriptionExpiry = false, false
 	require.False(t, adminOnly.bindingAvailable(), "nothing would reach a user's phone")
 }
 
@@ -95,15 +111,33 @@ func TestParseSMSConfigDefaults(t *testing.T) {
 	require.False(t, cfg.Enabled)
 	require.Equal(t, smsDefaultRegion, cfg.Region)
 	require.Equal(t, 10, cfg.DailyLimit)
-	require.Equal(t, SMSEvents{BalanceLow: true, SubscriptionExpiry: true, OpsAlert: true, AccountQuota: true}, cfg.Events)
+	require.Equal(t, SMSEvents{BalanceLow: true, SubscriptionExpiry: true}, cfg.Events)
 
 	require.Equal(t, defaultSMSConfig(), parseSMSConfig("{broken"))
 
 	stored := parseSMSConfig(`{"enabled":true,"events":{"balance_low":false},"region":"nowhere"}`)
 	require.True(t, stored.Enabled)
 	require.False(t, stored.Events.BalanceLow)
-	require.True(t, stored.Events.OpsAlert, "a switch missing from the stored JSON keeps its default")
+	require.True(t, stored.Events.SubscriptionExpiry, "a switch missing from the stored JSON keeps its default")
 	require.Equal(t, smsDefaultRegion, stored.Region)
+}
+
+func TestSMSLegacyAdminAlerts(t *testing.T) {
+	// What the first release stored: one phone list for both admin alerts.
+	legacy := parseSMSLegacyAdminAlerts(`{"enabled":true,"admin_phones":["13800138000","bad","13900139000"],"ops_alert_min_level":"Warning","events":{"balance_low":true,"ops_alert":true}}`)
+	require.Equal(t, SMSOpsAlert{Enabled: true, Phones: []string{"13800138000", "13900139000"}, MinLevel: "warning"}, legacy.opsAlert(),
+		"an invalid number is dropped rather than losing the list")
+	require.Equal(t, SMSAccountQuota{Phones: []SMSQuotaPhone{{Phone: "13800138000"}, {Phone: "13900139000"}}}, legacy.accountQuota(),
+		"a switch missing from the stored JSON was on")
+
+	switchedOff := parseSMSLegacyAdminAlerts(`{"admin_phones":["13800138000"],"events":{"ops_alert":false,"account_quota":false}}`)
+	require.False(t, switchedOff.opsAlert().Enabled)
+	require.Equal(t, []string{"13800138000"}, switchedOff.opsAlert().Phones)
+	require.Empty(t, switchedOff.accountQuota().Phones)
+
+	none := parseSMSLegacyAdminAlerts("")
+	require.Equal(t, SMSOpsAlert{Phones: []string{}}, none.opsAlert())
+	require.Empty(t, none.accountQuota().Phones)
 }
 
 func TestNormalizeSMSConfig(t *testing.T) {
@@ -111,34 +145,22 @@ func TestNormalizeSMSConfig(t *testing.T) {
 	in := readyConfig()
 	in.SecretKey = ""
 	in.SecretID = "  id2 "
-	in.AdminPhones = []string{"+86 138 0013 8000", "13800138000", "", "13900139000"}
 	in.Templates.BalanceLow = " 22 "
-	in.OpsAlertMinLevel = "Warning"
 	in.Region = ""
 
 	out, err := normalizeSMSConfig(in, stored)
 	require.NoError(t, err)
 	require.Equal(t, "key", out.SecretKey, "an empty key keeps the stored one")
 	require.Equal(t, "id2", out.SecretID)
-	require.Equal(t, []string{"13800138000", "13900139000"}, out.AdminPhones)
 	require.Equal(t, "22", out.Templates.BalanceLow)
-	require.Equal(t, "warning", out.OpsAlertMinLevel)
 	require.Equal(t, smsDefaultRegion, out.Region)
 
 	for name, change := range map[string]func(*SMSConfig){
-		"admin phone": func(c *SMSConfig) { c.AdminPhones = []string{"12345"} },
-		"template":    func(c *SMSConfig) { c.Templates.VerifyCode = "SMS_123" },
-		"app id":      func(c *SMSConfig) { c.SDKAppID = "app" },
-		"region":      func(c *SMSConfig) { c.Region = "us-east-1" },
-		"daily limit": func(c *SMSConfig) { c.DailyLimit = -1 },
-		"level":       func(c *SMSConfig) { c.OpsAlertMinLevel = "fatal" },
-		"signature":   func(c *SMSConfig) { c.SignName = strings.Repeat("签", 33) },
-		"too many": func(c *SMSConfig) {
-			c.AdminPhones = nil
-			for i := 0; i < 11; i++ {
-				c.AdminPhones = append(c.AdminPhones, fmt.Sprintf("138001380%02d", i))
-			}
-		},
+		"template":      func(c *SMSConfig) { c.Templates.VerifyCode = "SMS_123" },
+		"app id":        func(c *SMSConfig) { c.SDKAppID = "app" },
+		"region":        func(c *SMSConfig) { c.Region = "us-east-1" },
+		"daily limit":   func(c *SMSConfig) { c.DailyLimit = -1 },
+		"signature":     func(c *SMSConfig) { c.SignName = strings.Repeat("签", 33) },
 		"no credential": func(c *SMSConfig) { c.SDKAppID = "" },
 	} {
 		cfg := readyConfig()
@@ -152,6 +174,42 @@ func TestNormalizeSMSConfig(t *testing.T) {
 	dryRun.DryRun = true
 	_, err = normalizeSMSConfig(dryRun, SMSConfig{})
 	require.NoError(t, err, "dry-run mode can be switched on without credentials")
+}
+
+func TestNormalizeSMSAdminAlerts(t *testing.T) {
+	ops, err := normalizeSMSOpsAlert(SMSOpsAlert{Enabled: true, Phones: []string{"+86 138 0013 8000", "13800138000", "", "13900139000"}, MinLevel: " Critical "})
+	require.NoError(t, err)
+	require.Equal(t, SMSOpsAlert{Enabled: true, Phones: []string{"13800138000", "13900139000"}, MinLevel: "critical"}, ops)
+
+	ops, err = normalizeSMSOpsAlert(SMSOpsAlert{Enabled: true})
+	require.NoError(t, err)
+	require.False(t, ops.Enabled, "no phone switches the SMS alert off, as upstream does for the email")
+
+	tooMany := []string{}
+	for i := 0; i < 11; i++ {
+		tooMany = append(tooMany, fmt.Sprintf("138001380%02d", i))
+	}
+	for name, in := range map[string]SMSOpsAlert{
+		"phone":    {Phones: []string{"12345"}},
+		"level":    {MinLevel: "fatal"},
+		"too many": {Phones: tooMany},
+	} {
+		_, err := normalizeSMSOpsAlert(in)
+		require.Error(t, err, name)
+	}
+
+	quota, err := normalizeSMSAccountQuota(SMSAccountQuota{Phones: []SMSQuotaPhone{
+		{Phone: " 139 0013 9000 ", Disabled: true}, {Phone: ""}, {Phone: "13900139000"}, {Phone: "+8613800138000"},
+	}})
+	require.NoError(t, err)
+	require.Equal(t, []SMSQuotaPhone{{Phone: "13900139000", Disabled: true}, {Phone: "13800138000"}}, quota.Phones,
+		"empty rows are dropped and a repeated number keeps its first entry")
+
+	_, err = normalizeSMSAccountQuota(SMSAccountQuota{Phones: []SMSQuotaPhone{{Phone: "12345"}}})
+	require.Error(t, err)
+	quota, err = normalizeSMSAccountQuota(SMSAccountQuota{})
+	require.NoError(t, err)
+	require.Equal(t, []SMSQuotaPhone{}, quota.Phones)
 }
 
 func TestSMSConfigViewHidesTheSecretKey(t *testing.T) {

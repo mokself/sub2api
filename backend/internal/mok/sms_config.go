@@ -10,8 +10,17 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-// smsConfigKey is the settings key the SMS configuration is stored under, as JSON.
-const smsConfigKey = "mok_sms_config"
+// The SMS settings live in three settings keys, as JSON, each edited where its email
+// counterpart is:
+//   - smsConfigKey: the SMS card in the system settings (provider, templates, the user
+//     notifications, the daily cap);
+//   - smsOpsAlertKey: ops monitoring → settings, next to the alert emails;
+//   - smsAccountQuotaKey: the account quota notification card, next to its emails.
+const (
+	smsConfigKey       = "mok_sms_config"
+	smsOpsAlertKey     = "mok_sms_ops_alert"
+	smsAccountQuotaKey = "mok_sms_account_quota"
+)
 
 // Events that are not notifications: binding a phone number, and the admin's test message.
 const (
@@ -45,15 +54,14 @@ type SMSTemplates struct {
 	AccountQuota       string `json:"account_quota"`
 }
 
-// SMSEvents switches the notifications on and off one by one.
+// SMSEvents switches the user notifications on and off. The admin alerts are switched
+// where their recipients are set (SMSOpsAlert, SMSAccountQuota).
 type SMSEvents struct {
 	BalanceLow         bool `json:"balance_low"`
 	SubscriptionExpiry bool `json:"subscription_expiry"`
-	OpsAlert           bool `json:"ops_alert"`
-	AccountQuota       bool `json:"account_quota"`
 }
 
-// SMSConfig is the stored SMS configuration.
+// SMSConfig is the configuration of the SMS card.
 type SMSConfig struct {
 	Enabled bool `json:"enabled"`
 	// DryRun logs every message instead of sending it, for trying the setup out.
@@ -68,20 +76,34 @@ type SMSConfig struct {
 	DailyLimit int          `json:"daily_limit"`
 	Templates  SMSTemplates `json:"templates"`
 	Events     SMSEvents    `json:"events"`
-	// AdminPhones receive the ops alerts and account quota alerts.
-	AdminPhones []string `json:"admin_phones"`
-	// OpsAlertMinLevel is the lowest ops alert level sent by SMS: info, warning, critical,
-	// or empty for every level.
-	OpsAlertMinLevel string `json:"ops_alert_min_level"`
 }
 
-// defaultSMSConfig is what an unconfigured site starts from: off, with every notification
-// switched on so that filling in the templates is all it takes.
+// SMSOpsAlert is the SMS part of the ops alert settings.
+type SMSOpsAlert struct {
+	Enabled bool     `json:"enabled"`
+	Phones  []string `json:"phones"`
+	// MinLevel is the lowest alert level sent: info, warning, critical, or empty for all.
+	MinLevel string `json:"min_level"`
+}
+
+// SMSQuotaPhone is one admin phone of the account quota alerts.
+type SMSQuotaPhone struct {
+	Phone    string `json:"phone"`
+	Disabled bool   `json:"disabled"`
+}
+
+// SMSAccountQuota is the SMS part of the account quota notification settings.
+type SMSAccountQuota struct {
+	Phones []SMSQuotaPhone `json:"phones"`
+}
+
+// defaultSMSConfig is what an unconfigured site starts from: off, with both user
+// notifications switched on so that filling in the templates is all it takes.
 func defaultSMSConfig() SMSConfig {
 	return SMSConfig{
 		Region:     smsDefaultRegion,
 		DailyLimit: smsDefaultDailyLimit,
-		Events:     SMSEvents{BalanceLow: true, SubscriptionExpiry: true, OpsAlert: true, AccountQuota: true},
+		Events:     SMSEvents{BalanceLow: true, SubscriptionExpiry: true},
 	}
 }
 
@@ -98,6 +120,94 @@ func parseSMSConfig(raw string) SMSConfig {
 		cfg.Region = smsDefaultRegion
 	}
 	return cfg
+}
+
+// smsLegacyAdminAlerts are the admin alert fields the SMS card held in its first release
+// (mok-v0.2.23.2): one phone list for both alerts. They are read from smsConfigKey while
+// the new keys have not been saved yet.
+type smsLegacyAdminAlerts struct {
+	AdminPhones      []string `json:"admin_phones"`
+	OpsAlertMinLevel string   `json:"ops_alert_min_level"`
+	Events           struct {
+		OpsAlert     *bool `json:"ops_alert"`
+		AccountQuota *bool `json:"account_quota"`
+	} `json:"events"`
+}
+
+func parseSMSLegacyAdminAlerts(raw string) smsLegacyAdminAlerts {
+	var legacy smsLegacyAdminAlerts
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &legacy)
+	}
+	return legacy
+}
+
+// switchedOn reads a legacy switch, which defaulted to on.
+func switchedOn(v *bool) bool { return v == nil || *v }
+
+// phones returns the valid legacy phones; anything else is dropped rather than losing the list.
+func (l smsLegacyAdminAlerts) phones() []string {
+	phones := []string{}
+	seen := map[string]bool{}
+	for _, entry := range l.AdminPhones {
+		phone, ok := normalizeSMSPhone(entry)
+		if ok && !seen[phone] && len(phones) < smsMaxAdminPhones {
+			seen[phone] = true
+			phones = append(phones, phone)
+		}
+	}
+	return phones
+}
+
+func (l smsLegacyAdminAlerts) opsAlert() SMSOpsAlert {
+	phones := l.phones()
+	level := strings.ToLower(strings.TrimSpace(l.OpsAlertMinLevel))
+	if !smsMinLevels[level] {
+		level = ""
+	}
+	return SMSOpsAlert{Enabled: switchedOn(l.Events.OpsAlert) && len(phones) > 0, Phones: phones, MinLevel: level}
+}
+
+func (l smsLegacyAdminAlerts) accountQuota() SMSAccountQuota {
+	quota := SMSAccountQuota{Phones: []SMSQuotaPhone{}}
+	if !switchedOn(l.Events.AccountQuota) {
+		return quota
+	}
+	for _, phone := range l.phones() {
+		quota.Phones = append(quota.Phones, SMSQuotaPhone{Phone: phone})
+	}
+	return quota
+}
+
+func parseSMSOpsAlert(raw string) (SMSOpsAlert, bool) {
+	var ops SMSOpsAlert
+	if strings.TrimSpace(raw) == "" || json.Unmarshal([]byte(raw), &ops) != nil {
+		return SMSOpsAlert{}, false
+	}
+	normalized, err := normalizeSMSOpsAlert(ops)
+	if err != nil {
+		return SMSOpsAlert{}, false
+	}
+	return normalized, true
+}
+
+func parseSMSAccountQuota(raw string) (SMSAccountQuota, bool) {
+	var quota SMSAccountQuota
+	if strings.TrimSpace(raw) == "" || json.Unmarshal([]byte(raw), &quota) != nil {
+		return SMSAccountQuota{}, false
+	}
+	normalized, err := normalizeSMSAccountQuota(quota)
+	if err != nil {
+		return SMSAccountQuota{}, false
+	}
+	return normalized, true
+}
+
+// smsSettings is everything a notification decision needs.
+type smsSettings struct {
+	cfg   SMSConfig
+	ops   SMSOpsAlert
+	quota SMSAccountQuota
 }
 
 // credentialsSet reports whether the provider can be called.
@@ -128,30 +238,50 @@ func (c SMSConfig) templateFor(event string) string {
 	return ""
 }
 
-// eventOn reports whether a notification is switched on.
-func (c SMSConfig) eventOn(event string) bool {
-	switch event {
-	case service.MokSMSEventBalanceLow:
-		return c.Events.BalanceLow
-	case service.MokSMSEventSubscriptionExpiry:
-		return c.Events.SubscriptionExpiry
-	case service.MokSMSEventOpsAlert:
-		return c.Events.OpsAlert
-	case service.MokSMSEventAccountQuota:
-		return c.Events.AccountQuota
+// ready reports whether messages of a kind can be sent: SMS on and its template set.
+func (c SMSConfig) ready(event string) bool {
+	return c.canSend() && c.templateFor(event) != ""
+}
+
+// enabledPhones are the account quota phones that are switched on.
+func (q SMSAccountQuota) enabledPhones() []string {
+	phones := []string{}
+	for _, p := range q.Phones {
+		if !p.Disabled {
+			phones = append(phones, p.Phone)
+		}
 	}
-	return false
+	return phones
+}
+
+// recipients returns the admin phones of an admin alert; nil for user notifications.
+func (s smsSettings) recipients(event string) []string {
+	switch event {
+	case service.MokSMSEventOpsAlert:
+		if !s.ops.Enabled {
+			return nil
+		}
+		return s.ops.Phones
+	case service.MokSMSEventAccountQuota:
+		return s.quota.enabledPhones()
+	}
+	return nil
 }
 
 // wants reports whether a notification goes out by SMS. Admin alerts also need a phone.
-func (c SMSConfig) wants(event string) bool {
-	if !c.canSend() || !c.eventOn(event) || c.templateFor(event) == "" {
+func (s smsSettings) wants(event string) bool {
+	if !s.cfg.ready(event) {
 		return false
 	}
-	if event == service.MokSMSEventOpsAlert || event == service.MokSMSEventAccountQuota {
-		return len(c.AdminPhones) > 0
+	switch event {
+	case service.MokSMSEventBalanceLow:
+		return s.cfg.Events.BalanceLow
+	case service.MokSMSEventSubscriptionExpiry:
+		return s.cfg.Events.SubscriptionExpiry
+	case service.MokSMSEventOpsAlert, service.MokSMSEventAccountQuota:
+		return len(s.recipients(event)) > 0
 	}
-	return true
+	return false
 }
 
 // userEvents are the notifications users get on their bound phone.
@@ -159,12 +289,12 @@ var userEvents = []string{service.MokSMSEventBalanceLow, service.MokSMSEventSubs
 
 // bindingAvailable reports whether users can bind a phone: codes can be sent and at least
 // one notification would reach that phone.
-func (c SMSConfig) bindingAvailable() bool {
-	if !c.canSend() || c.Templates.VerifyCode == "" {
+func (s smsSettings) bindingAvailable() bool {
+	if !s.cfg.ready(smsEventVerifyCode) {
 		return false
 	}
 	for _, event := range userEvents {
-		if c.wants(event) {
+		if s.wants(event) {
 			return true
 		}
 	}
@@ -183,12 +313,26 @@ func viewSMSConfig(c SMSConfig) SMSConfigView {
 	return SMSConfigView{SMSConfig: c, SecretKey: "", SecretKeySet: c.SecretKey != ""}
 }
 
+// SMSOpsAlertView adds whether the SMS card is set up for ops alerts.
+type SMSOpsAlertView struct {
+	SMSOpsAlert
+	// Ready is false until SMS is switched on and the ops alert template is set.
+	Ready bool `json:"ready"`
+}
+
+// SMSAccountQuotaView adds whether the SMS card is set up for account quota alerts.
+type SMSAccountQuotaView struct {
+	SMSAccountQuota
+	// Ready is false until SMS is switched on and the account quota template is set.
+	Ready bool `json:"ready"`
+}
+
 func smsConfigError(message string) error {
 	return infraerrors.BadRequest("MOK_SMS_CONFIG_INVALID", message)
 }
 
-// normalizeSMSConfig validates an update from the admin page. An empty secret key keeps
-// the stored one.
+// normalizeSMSConfig validates an update from the SMS card. An empty secret key keeps the
+// stored one.
 func normalizeSMSConfig(in SMSConfig, stored SMSConfig) (SMSConfig, error) {
 	out := in
 	out.SecretID = strings.TrimSpace(in.SecretID)
@@ -202,7 +346,6 @@ func normalizeSMSConfig(in SMSConfig, stored SMSConfig) (SMSConfig, error) {
 	if out.Region == "" {
 		out.Region = smsDefaultRegion
 	}
-	out.OpsAlertMinLevel = strings.ToLower(strings.TrimSpace(in.OpsAlertMinLevel))
 
 	if len(out.SecretID) > smsMaxSecretLength || len(out.SecretKey) > smsMaxSecretLength {
 		return SMSConfig{}, smsConfigError("SecretId or SecretKey is too long")
@@ -219,24 +362,30 @@ func normalizeSMSConfig(in SMSConfig, stored SMSConfig) (SMSConfig, error) {
 	if out.DailyLimit < 0 || out.DailyLimit > smsMaxDailyLimit {
 		return SMSConfig{}, smsConfigError("the daily cap must be between 0 and 1000")
 	}
-	if !smsMinLevels[out.OpsAlertMinLevel] {
-		return SMSConfig{}, smsConfigError("unsupported ops alert level")
-	}
 	for _, id := range []*string{&out.Templates.VerifyCode, &out.Templates.BalanceLow, &out.Templates.SubscriptionExpiry, &out.Templates.OpsAlert, &out.Templates.AccountQuota} {
 		*id = strings.TrimSpace(*id)
 		if *id != "" && (!smsDigits.MatchString(*id) || len(*id) > 20) {
 			return SMSConfig{}, smsConfigError("a template ID is a number such as 1234567")
 		}
 	}
-	phones := make([]string, 0, len(in.AdminPhones))
+	if out.Enabled && !out.DryRun && !out.credentialsSet() {
+		return SMSConfig{}, smsConfigError("fill in SecretId, SecretKey, SDK AppID and the signature before switching SMS on")
+	}
+	return out, nil
+}
+
+// normalizeSMSPhoneList normalizes, deduplicates and checks a list of admin phones. Empty
+// entries are skipped; the first invalid entry is returned with the error.
+func normalizeSMSPhoneList(raw []string) ([]string, error) {
+	phones := []string{}
 	seen := map[string]bool{}
-	for _, raw := range in.AdminPhones {
-		if strings.TrimSpace(raw) == "" {
+	for _, entry := range raw {
+		if strings.TrimSpace(entry) == "" {
 			continue
 		}
-		phone, ok := normalizeSMSPhone(raw)
+		phone, ok := normalizeSMSPhone(entry)
 		if !ok {
-			return SMSConfig{}, smsConfigError("invalid admin phone number: " + strings.TrimSpace(raw))
+			return nil, smsConfigError("invalid phone number: " + strings.TrimSpace(entry))
 		}
 		if !seen[phone] {
 			seen[phone] = true
@@ -244,11 +393,45 @@ func normalizeSMSConfig(in SMSConfig, stored SMSConfig) (SMSConfig, error) {
 		}
 	}
 	if len(phones) > smsMaxAdminPhones {
-		return SMSConfig{}, smsConfigError("at most 10 admin phone numbers")
+		return nil, smsConfigError("at most 10 phone numbers")
 	}
-	out.AdminPhones = phones
-	if out.Enabled && !out.DryRun && !out.credentialsSet() {
-		return SMSConfig{}, smsConfigError("fill in SecretId, SecretKey, SDK AppID and the signature before switching SMS on")
+	return phones, nil
+}
+
+// normalizeSMSOpsAlert validates the ops alert settings. Without a phone the alert is off,
+// as upstream switches the alert email off without a recipient.
+func normalizeSMSOpsAlert(in SMSOpsAlert) (SMSOpsAlert, error) {
+	phones, err := normalizeSMSPhoneList(in.Phones)
+	if err != nil {
+		return SMSOpsAlert{}, err
+	}
+	level := strings.ToLower(strings.TrimSpace(in.MinLevel))
+	if !smsMinLevels[level] {
+		return SMSOpsAlert{}, smsConfigError("unsupported ops alert level")
+	}
+	return SMSOpsAlert{Enabled: in.Enabled && len(phones) > 0, Phones: phones, MinLevel: level}, nil
+}
+
+// normalizeSMSAccountQuota validates the account quota phones; a number listed twice keeps
+// its first entry.
+func normalizeSMSAccountQuota(in SMSAccountQuota) (SMSAccountQuota, error) {
+	out := SMSAccountQuota{Phones: []SMSQuotaPhone{}}
+	seen := map[string]bool{}
+	for _, entry := range in.Phones {
+		if strings.TrimSpace(entry.Phone) == "" {
+			continue
+		}
+		phone, ok := normalizeSMSPhone(entry.Phone)
+		if !ok {
+			return SMSAccountQuota{}, smsConfigError("invalid phone number: " + strings.TrimSpace(entry.Phone))
+		}
+		if !seen[phone] {
+			seen[phone] = true
+			out.Phones = append(out.Phones, SMSQuotaPhone{Phone: phone, Disabled: entry.Disabled})
+		}
+	}
+	if len(out.Phones) > smsMaxAdminPhones {
+		return SMSAccountQuota{}, smsConfigError("at most 10 phone numbers")
 	}
 	return out, nil
 }

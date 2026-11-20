@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   isSmsTemplateId,
   normalizeSmsPhone,
-  parseSmsPhoneLines,
   smsErrorMessage,
   smsSuggestedTemplates,
   smsTemplateKinds,
@@ -21,16 +20,6 @@ describe('normalizeSmsPhone', () => {
     for (const raw of ['', '1380013800', '138001380001', '12800138000', '+12025550123', 'abc', '+85291234567']) {
       expect(normalizeSmsPhone(raw), raw).toBeNull()
     }
-  })
-})
-
-describe('parseSmsPhoneLines', () => {
-  it('splits, normalizes and deduplicates, reporting what is not a number', () => {
-    expect(parseSmsPhoneLines('13800138000\n\n+86 138 0013 8000, 13900139000；12345\n')).toEqual({
-      phones: ['13800138000', '13900139000'],
-      invalid: ['12345']
-    })
-    expect(parseSmsPhoneLines('  ')).toEqual({ phones: [], invalid: [] })
   })
 })
 

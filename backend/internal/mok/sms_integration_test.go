@@ -103,7 +103,6 @@ func readySMSConfig() SMSConfig {
 	cfg.Enabled = true
 	cfg.SecretID, cfg.SecretKey, cfg.SDKAppID, cfg.SignName = "id", "key", "1400000000", "测试站"
 	cfg.Templates = SMSTemplates{VerifyCode: "100", BalanceLow: "200", SubscriptionExpiry: "300", OpsAlert: "400", AccountQuota: "500"}
-	cfg.AdminPhones = []string{"13900000001", "13900000002"}
 	return cfg
 }
 
@@ -361,8 +360,12 @@ func TestSMSDailyCapPerUser(t *testing.T) {
 
 func TestSMSNotifyAdmins(t *testing.T) {
 	f := newSMSFixture(t)
-	f.configure(t, func(c *SMSConfig) { c.OpsAlertMinLevel = "warning"; c.DailyLimit = 1 })
+	f.configure(t, func(c *SMSConfig) { c.DailyLimit = 1 })
 	ctx := context.Background()
+	_, err := f.svc.SaveOpsAlert(ctx, SMSOpsAlert{Enabled: true, Phones: []string{"13900000001", "13900000002"}, MinLevel: "warning"})
+	require.NoError(t, err)
+	_, err = f.svc.SaveAccountQuota(ctx, SMSAccountQuota{Phones: []SMSQuotaPhone{{Phone: "13900000001"}, {Phone: "13900000003", Disabled: true}}})
+	require.NoError(t, err)
 
 	f.svc.MokNotifySMS(ctx, service.MokSMSNotice{Event: service.MokSMSEventOpsAlert, Level: "info", Params: []string{"r", "P2", "1", "2"}, DedupKey: "event-1"})
 	require.Empty(t, f.sender.messages(), "below the minimum level")
@@ -376,10 +379,81 @@ func TestSMSNotifyAdmins(t *testing.T) {
 	require.Equal(t, 20, len([]rune(msgs[0].params[0])), "long parameters are cut to the provider's variable limit")
 
 	f.svc.MokNotifySMS(ctx, service.MokSMSNotice{Event: service.MokSMSEventAccountQuota, Params: []string{"a", "日限额", "1", "2"}, DedupKey: "account-1"})
-	require.Len(t, f.sender.messages(), 2, "the daily cap counts per admin phone")
-	for _, l := range f.logs(t) {
+	require.Len(t, f.sender.messages(), 2, "the daily cap counts per admin phone; the switched-off phone gets nothing")
+	logs := f.logs(t)
+	require.Len(t, logs, 3)
+	require.Equal(t, "13900000001", logs[2].phone)
+	require.Equal(t, smsStatusLimited, logs[2].status)
+	for _, l := range logs {
 		require.False(t, l.userID.Valid)
 	}
+
+	_, err = f.svc.SaveOpsAlert(ctx, SMSOpsAlert{Enabled: false, Phones: []string{"13900000001"}})
+	require.NoError(t, err)
+	f.svc.MokNotifySMS(ctx, service.MokSMSNotice{Event: service.MokSMSEventOpsAlert, Level: "critical", Params: []string{"r", "P0", "1", "2"}, DedupKey: "event-3"})
+	require.Len(t, f.logs(t), 3, "the ops alert SMS is switched off")
+}
+
+func TestSMSAdminAlertSettings(t *testing.T) {
+	f := newSMSFixture(t)
+	ctx := context.Background()
+
+	ops, err := f.svc.AdminOpsAlert(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SMSOpsAlertView{SMSOpsAlert: SMSOpsAlert{Phones: []string{}}}, ops, "nothing set, SMS not set up")
+	quota, err := f.svc.AdminAccountQuota(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SMSAccountQuotaView{SMSAccountQuota: SMSAccountQuota{Phones: []SMSQuotaPhone{}}}, quota)
+
+	_, err = f.svc.SaveOpsAlert(ctx, SMSOpsAlert{Enabled: true, Phones: []string{"12345"}})
+	requireReason(t, err, "MOK_SMS_CONFIG_INVALID")
+
+	ops, err = f.svc.SaveOpsAlert(ctx, SMSOpsAlert{Enabled: true, Phones: []string{"+86 139 0000 0001"}, MinLevel: "critical"})
+	require.NoError(t, err)
+	require.False(t, ops.Ready)
+	f.configure(t, func(c *SMSConfig) { c.Templates.AccountQuota = "" })
+
+	// A fresh service sees what was saved.
+	fresh := NewSMSService(f.svc.settings, f.svc.store, f.sender, nil)
+	ops, err = fresh.AdminOpsAlert(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SMSOpsAlertView{SMSOpsAlert: SMSOpsAlert{Enabled: true, Phones: []string{"13900000001"}, MinLevel: "critical"}, Ready: true}, ops)
+	quota, err = fresh.AdminAccountQuota(ctx)
+	require.NoError(t, err)
+	require.False(t, quota.Ready, "no account quota template")
+}
+
+func TestSMSFirstReleaseAdminPhonesAreKept(t *testing.T) {
+	f := newSMSFixture(t)
+	ctx := context.Background()
+	// The SMS card of mok-v0.2.23.2 kept one phone list for both admin alerts.
+	require.NoError(t, f.svc.settings.Set(ctx, smsConfigKey, `{"enabled":true,"dry_run":true,"region":"ap-guangzhou","daily_limit":10,`+
+		`"templates":{"verify_code":"100","ops_alert":"400","account_quota":"500"},`+
+		`"events":{"balance_low":true,"subscription_expiry":true,"ops_alert":true,"account_quota":true},`+
+		`"admin_phones":["13900000001","13900000002"],"ops_alert_min_level":"warning"}`))
+
+	ops, err := f.svc.AdminOpsAlert(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SMSOpsAlertView{SMSOpsAlert: SMSOpsAlert{Enabled: true, Phones: []string{"13900000001", "13900000002"}, MinLevel: "warning"}, Ready: true}, ops)
+	require.True(t, f.svc.MokSMSWanted(ctx, service.MokSMSEventAccountQuota))
+
+	// Saving the SMS card rewrites its key without those fields; the phones stay.
+	cfg := readySMSConfig()
+	cfg.DryRun = true
+	_, err = f.svc.SaveConfig(ctx, cfg)
+	require.NoError(t, err)
+	raw, err := f.svc.settings.GetValue(ctx, smsConfigKey)
+	require.NoError(t, err)
+	require.NotContains(t, raw, "admin_phones")
+
+	fresh := NewSMSService(f.svc.settings, f.svc.store, f.sender, nil)
+	ops, err = fresh.AdminOpsAlert(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"13900000001", "13900000002"}, ops.Phones)
+	require.Equal(t, "warning", ops.MinLevel)
+	quota, err := fresh.AdminAccountQuota(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []SMSQuotaPhone{{Phone: "13900000001"}, {Phone: "13900000002"}}, quota.Phones)
 }
 
 func TestSMSSubscriptionExpiryReminders(t *testing.T) {

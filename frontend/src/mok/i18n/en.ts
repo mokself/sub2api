@@ -152,10 +152,40 @@ export default {
         body: 'Your invite code is not valid at the moment, and the recharges and usage of the users you invited earn you no new rebates. Rebate quota you already have can still be transferred to your balance.'
       }
     },
+    smsOps: {
+      title: 'SMS alerts',
+      enabled: 'Enable SMS alerts',
+      phones: 'Alert phones',
+      phonePlaceholder: 'Phone number',
+      add: 'Add',
+      remove: 'Remove',
+      hint: 'Mainland China mobile numbers only, at most 10. Without a phone, SMS alerts switch off. Alert messages count towards the daily cap of the SMS notifications, per phone.',
+      minLevel: 'Lowest level',
+      notReady: 'No SMS can go out yet: enable SMS and set the ops alert template ID in System settings → Email & SMS → SMS notifications first.',
+      loadFailed: 'Failed to load the SMS alert settings',
+      retry: 'Retry',
+      invalidPhone: 'Enter a mainland China mobile number',
+      duplicate: 'This number is already in the list',
+      tooMany: 'At most 10 phone numbers',
+      saveFailed: 'Failed to save the SMS alert settings'
+    },
+    smsQuota: {
+      phones: 'Notification phones',
+      hint: 'When an account reaches its alert line, these numbers get an SMS as well. Mainland China mobile numbers only, at most 10; leave empty for no SMS.',
+      phonePlaceholder: 'Phone number',
+      add: 'Add phone',
+      remove: 'Remove',
+      notReady: 'No SMS can go out yet: enable SMS and set the account quota template ID in the SMS notifications card below first.',
+      loadFailed: 'Failed to load the notification phones',
+      retry: 'Retry',
+      invalidPhone: 'Not a mainland China mobile number: {phone}',
+      tooMany: 'At most 10 notification phones',
+      saveFailed: 'Failed to save the notification phones'
+    },
     sms: {
       title: 'SMS notifications',
       description:
-        'Send low balance reminders, subscription expiry reminders, and ops alerts and account quota alerts for admins through Tencent Cloud SMS. SMS and email are independent: users with a bound phone get SMS, users with notification emails get email, users with both get both. Recharge, subscription purchase and content moderation notices are never sent by SMS.',
+        'Send low balance reminders, subscription expiry reminders, and ops alerts and account quota alerts for admins through Tencent Cloud SMS. SMS and email are independent: users with a bound phone get SMS, users with notification emails get email, users with both get both. Admin alert phones are set next to the alert emails: ops alerts in Ops monitoring → Settings, account quota alerts in the Account quota notification card above. Recharge, subscription purchase and content moderation notices are never sent by SMS.',
       enabled: 'Enable SMS notifications',
       dryRun: 'Log only, do not send',
       dryRunHint:
@@ -187,11 +217,11 @@ export default {
       params: 'Variables in order: {params}',
       copy: 'Copy template',
       copied: 'Template copied',
-      always: 'On binding',
       kinds: {
         verify_code: {
           name: 'Verification code',
           hint: 'Used when users bind a phone number on their profile page; without it, no phone can be bound.',
+          switchedAt: 'On binding',
           params: 'code, minutes valid'
         },
         balance_low: {
@@ -206,23 +236,16 @@ export default {
         },
         ops_alert: {
           name: 'Ops alert',
-          hint: 'Sent to the admin phones when an ops monitoring alert rule fires; alert silencing applies.',
+          hint: 'Sent when an ops monitoring alert rule fires; alert silencing applies. The switch, phones and lowest level are in Ops monitoring → Settings, below the alert emails.',
+          switchedAt: 'Switched on in the ops monitoring settings',
           params: 'rule name, severity, current value, threshold'
         },
         account_quota: {
           name: 'Account quota alert',
-          hint: 'Sent to the admin phones when an account reaches its quota alert line; the account quota notification above must be on and the account needs an alert threshold. At most one a day per account and quota.',
+          hint: 'Sent when an account reaches its quota alert line. The phones are below the notification emails of the Account quota notification card above and follow its switch; each account sets its alert thresholds when edited. At most one a day per account and quota.',
+          switchedAt: 'Phones set in the account quota notification',
           params: 'account name, quota kind, remaining, limit'
         }
-      },
-      adminPhones: 'Admin alert phones',
-      adminPhonesHint: 'Ops alerts and account quota alerts go to these numbers. One per line, at most 10, mainland China mobile numbers only.',
-      minLevel: 'Lowest ops alert level',
-      minLevels: {
-        all: 'Every level',
-        info: 'Info (P2, P3) and above',
-        warning: 'Warning (P1) and above',
-        critical: 'Critical (P0) only'
       },
       dailyLimit: 'Daily cap',
       dailyLimitHint:
@@ -249,8 +272,6 @@ export default {
         requestFailed: 'Failed to send the test message'
       },
       validation: {
-        phones: 'Not mainland China mobile numbers: {phones}',
-        tooManyPhones: 'At most 10 admin phones',
         templateId: 'A template ID is a number such as 1234567',
         appId: 'The SDK AppID is a number such as 1400000000',
         dailyLimit: 'The daily cap must be between 0 and 1000',

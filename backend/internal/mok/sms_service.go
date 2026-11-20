@@ -73,7 +73,7 @@ type SMSService struct {
 	location func() *time.Location
 
 	cacheMu  sync.Mutex
-	cached   *SMSConfig
+	cached   *smsSettings
 	cachedAt time.Time
 
 	lastPrune time.Time
@@ -100,30 +100,55 @@ func NewSMSService(settings service.SettingRepository, store *SMSStore, sender S
 
 var _ service.MokSMSNotifier = (*SMSService)(nil)
 
-// loadConfig reads the stored configuration.
-func (s *SMSService) loadConfig(ctx context.Context) (SMSConfig, error) {
-	raw, err := s.settings.GetValue(ctx, smsConfigKey)
-	if err != nil && !errors.Is(err, service.ErrSettingNotFound) {
-		return SMSConfig{}, err
+// readSetting returns a stored value, or "" when the key is not set.
+func (s *SMSService) readSetting(ctx context.Context, key string) (string, error) {
+	raw, err := s.settings.GetValue(ctx, key)
+	if errors.Is(err, service.ErrSettingNotFound) {
+		return "", nil
 	}
-	cfg := parseSMSConfig(raw)
-	s.cacheMu.Lock()
-	s.cached, s.cachedAt = &cfg, s.now()
-	s.cacheMu.Unlock()
-	return cfg, nil
+	return raw, err
 }
 
-// config returns the configuration, cached for a short while: notifications check it on
-// hot paths. When the settings cannot be read it falls back to the last value, or off.
-func (s *SMSService) config(ctx context.Context) SMSConfig {
+// loadSettings reads all three parts. An admin alert part that has not been saved yet
+// comes from the fields the SMS card held in its first release.
+func (s *SMSService) loadSettings(ctx context.Context) (smsSettings, error) {
+	values, err := s.settings.GetMultiple(ctx, []string{smsConfigKey, smsOpsAlertKey, smsAccountQuotaKey})
+	if err != nil {
+		return smsSettings{}, err
+	}
+	main := values[smsConfigKey]
+	settings := smsSettings{cfg: parseSMSConfig(main)}
+	legacy := parseSMSLegacyAdminAlerts(main)
+	ops, ok := parseSMSOpsAlert(values[smsOpsAlertKey])
+	if !ok {
+		ops = legacy.opsAlert()
+	}
+	quota, ok := parseSMSAccountQuota(values[smsAccountQuotaKey])
+	if !ok {
+		quota = legacy.accountQuota()
+	}
+	settings.ops, settings.quota = ops, quota
+	s.remember(settings)
+	return settings, nil
+}
+
+func (s *SMSService) remember(settings smsSettings) {
+	s.cacheMu.Lock()
+	s.cached, s.cachedAt = &settings, s.now()
+	s.cacheMu.Unlock()
+}
+
+// current returns the settings, cached for a short while: notifications check them on hot
+// paths. When they cannot be read it falls back to the last value, or everything off.
+func (s *SMSService) current(ctx context.Context) smsSettings {
 	s.cacheMu.Lock()
 	if s.cached != nil && s.now().Sub(s.cachedAt) < smsConfigCacheTTL {
-		cfg := *s.cached
+		settings := *s.cached
 		s.cacheMu.Unlock()
-		return cfg
+		return settings
 	}
 	s.cacheMu.Unlock()
-	cfg, err := s.loadConfig(ctx)
+	settings, err := s.loadSettings(ctx)
 	if err != nil {
 		slog.Warn("mok sms: read settings failed", "error", err)
 		s.cacheMu.Lock()
@@ -131,46 +156,127 @@ func (s *SMSService) config(ctx context.Context) SMSConfig {
 		if s.cached != nil {
 			return *s.cached
 		}
-		return defaultSMSConfig()
+		return smsSettings{cfg: defaultSMSConfig()}
 	}
-	return cfg
+	return settings
 }
 
-// AdminConfig returns the stored configuration for the admin page.
+// storeJSON writes one settings key.
+func (s *SMSService) storeJSON(ctx context.Context, key string, value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return s.settings.Set(ctx, key, string(raw))
+}
+
+// AdminConfig returns the SMS card's configuration.
 func (s *SMSService) AdminConfig(ctx context.Context) (SMSConfigView, error) {
-	cfg, err := s.loadConfig(ctx)
+	settings, err := s.loadSettings(ctx)
 	if err != nil {
 		return SMSConfigView{}, err
 	}
+	return viewSMSConfig(settings.cfg), nil
+}
+
+// SaveConfig validates and stores the SMS card's configuration. An empty secret key keeps
+// the stored one.
+func (s *SMSService) SaveConfig(ctx context.Context, in SMSConfig) (SMSConfigView, error) {
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return SMSConfigView{}, err
+	}
+	cfg, err := normalizeSMSConfig(in, settings.cfg)
+	if err != nil {
+		return SMSConfigView{}, err
+	}
+	// Saving drops the first release's admin alert fields from smsConfigKey; keep what
+	// they meant in the admin alert keys first.
+	if err := s.keepLegacyAdminAlerts(ctx, settings); err != nil {
+		return SMSConfigView{}, err
+	}
+	if err := s.storeJSON(ctx, smsConfigKey, cfg); err != nil {
+		return SMSConfigView{}, err
+	}
+	settings.cfg = cfg
+	s.remember(settings)
 	return viewSMSConfig(cfg), nil
 }
 
-// SaveConfig validates and stores the configuration. An empty secret key keeps the stored one.
-func (s *SMSService) SaveConfig(ctx context.Context, in SMSConfig) (SMSConfigView, error) {
-	stored, err := s.loadConfig(ctx)
+// keepLegacyAdminAlerts writes the admin alert parts that have not been saved yet.
+func (s *SMSService) keepLegacyAdminAlerts(ctx context.Context, settings smsSettings) error {
+	for key, value := range map[string]any{smsOpsAlertKey: settings.ops, smsAccountQuotaKey: settings.quota} {
+		raw, err := s.readSetting(ctx, key)
+		if err != nil {
+			return err
+		}
+		if raw != "" {
+			continue
+		}
+		if err := s.storeJSON(ctx, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AdminOpsAlert returns the SMS part of the ops alert settings.
+func (s *SMSService) AdminOpsAlert(ctx context.Context) (SMSOpsAlertView, error) {
+	settings, err := s.loadSettings(ctx)
 	if err != nil {
-		return SMSConfigView{}, err
+		return SMSOpsAlertView{}, err
 	}
-	cfg, err := normalizeSMSConfig(in, stored)
+	return SMSOpsAlertView{SMSOpsAlert: settings.ops, Ready: settings.cfg.ready(service.MokSMSEventOpsAlert)}, nil
+}
+
+// SaveOpsAlert validates and stores the SMS part of the ops alert settings.
+func (s *SMSService) SaveOpsAlert(ctx context.Context, in SMSOpsAlert) (SMSOpsAlertView, error) {
+	ops, err := normalizeSMSOpsAlert(in)
 	if err != nil {
-		return SMSConfigView{}, err
+		return SMSOpsAlertView{}, err
 	}
-	raw, err := json.Marshal(cfg)
+	settings, err := s.loadSettings(ctx)
 	if err != nil {
-		return SMSConfigView{}, err
+		return SMSOpsAlertView{}, err
 	}
-	if err := s.settings.Set(ctx, smsConfigKey, string(raw)); err != nil {
-		return SMSConfigView{}, err
+	if err := s.storeJSON(ctx, smsOpsAlertKey, ops); err != nil {
+		return SMSOpsAlertView{}, err
 	}
-	s.cacheMu.Lock()
-	s.cached, s.cachedAt = &cfg, s.now()
-	s.cacheMu.Unlock()
-	return viewSMSConfig(cfg), nil
+	settings.ops = ops
+	s.remember(settings)
+	return SMSOpsAlertView{SMSOpsAlert: ops, Ready: settings.cfg.ready(service.MokSMSEventOpsAlert)}, nil
+}
+
+// AdminAccountQuota returns the SMS phones of the account quota alerts.
+func (s *SMSService) AdminAccountQuota(ctx context.Context) (SMSAccountQuotaView, error) {
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return SMSAccountQuotaView{}, err
+	}
+	return SMSAccountQuotaView{SMSAccountQuota: settings.quota, Ready: settings.cfg.ready(service.MokSMSEventAccountQuota)}, nil
+}
+
+// SaveAccountQuota validates and stores the SMS phones of the account quota alerts.
+func (s *SMSService) SaveAccountQuota(ctx context.Context, in SMSAccountQuota) (SMSAccountQuotaView, error) {
+	quota, err := normalizeSMSAccountQuota(in)
+	if err != nil {
+		return SMSAccountQuotaView{}, err
+	}
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return SMSAccountQuotaView{}, err
+	}
+	if err := s.storeJSON(ctx, smsAccountQuotaKey, quota); err != nil {
+		return SMSAccountQuotaView{}, err
+	}
+	settings.quota = quota
+	s.remember(settings)
+	return SMSAccountQuotaView{SMSAccountQuota: quota, Ready: settings.cfg.ready(service.MokSMSEventAccountQuota)}, nil
 }
 
 // MokSMSWanted implements service.MokSMSNotifier.
 func (s *SMSService) MokSMSWanted(ctx context.Context, event string) bool {
-	return s.config(ctx).wants(event)
+	return s.current(ctx).wants(event)
 }
 
 // smsLevelRanks orders the ops alert levels, as upstream's email does.
@@ -179,15 +285,16 @@ var smsLevelRanks = map[string]int{"info": 1, "warning": 2, "critical": 3}
 // MokNotifySMS implements service.MokSMSNotifier: it sends a notice to the user's bound
 // phone, or to the admin alert phones when the notice has no user.
 func (s *SMSService) MokNotifySMS(ctx context.Context, notice service.MokSMSNotice) {
-	cfg := s.config(ctx)
-	if !cfg.wants(notice.Event) {
+	settings := s.current(ctx)
+	if !settings.wants(notice.Event) {
 		return
 	}
-	if notice.Event == service.MokSMSEventOpsAlert && cfg.OpsAlertMinLevel != "" &&
-		smsLevelRanks[notice.Level] < smsLevelRanks[cfg.OpsAlertMinLevel] {
+	if notice.Event == service.MokSMSEventOpsAlert && settings.ops.MinLevel != "" &&
+		smsLevelRanks[notice.Level] < smsLevelRanks[settings.ops.MinLevel] {
 		return
 	}
-	phones := cfg.AdminPhones
+	cfg := settings.cfg
+	phones := settings.recipients(notice.Event)
 	if notice.UserID > 0 {
 		phone, ok, err := s.store.GetPhone(ctx, notice.UserID)
 		if err != nil {
@@ -310,10 +417,10 @@ type SMSPhoneStatus struct {
 }
 
 func (s *SMSService) PhoneStatus(ctx context.Context, userID int64) (SMSPhoneStatus, error) {
-	cfg := s.config(ctx)
-	status := SMSPhoneStatus{Available: cfg.bindingAvailable(), Events: []string{}}
+	settings := s.current(ctx)
+	status := SMSPhoneStatus{Available: settings.bindingAvailable(), Events: []string{}}
 	for _, event := range userEvents {
-		if cfg.wants(event) {
+		if settings.wants(event) {
 			status.Events = append(status.Events, event)
 		}
 	}
@@ -335,10 +442,11 @@ type SMSCodeSent struct {
 
 // SendBindCode sends a verification code to the number the user wants to bind.
 func (s *SMSService) SendBindCode(ctx context.Context, userID int64, rawPhone string) (SMSCodeSent, error) {
-	cfg := s.config(ctx)
-	if !cfg.bindingAvailable() {
+	settings := s.current(ctx)
+	if !settings.bindingAvailable() {
 		return SMSCodeSent{}, ErrSMSUnavailable
 	}
+	cfg := settings.cfg
 	phone, ok := normalizeSMSPhone(rawPhone)
 	if !ok {
 		return SMSCodeSent{}, ErrSMSPhoneInvalid
@@ -397,7 +505,7 @@ func (s *SMSService) SendBindCode(ctx context.Context, userID int64, rawPhone st
 
 // BindPhone checks the code and binds the number, replacing the user's previous one.
 func (s *SMSService) BindPhone(ctx context.Context, userID int64, rawPhone, code string) (SMSPhoneStatus, error) {
-	if !s.config(ctx).bindingAvailable() {
+	if !s.current(ctx).bindingAvailable() {
 		return SMSPhoneStatus{}, ErrSMSUnavailable
 	}
 	phone, ok := normalizeSMSPhone(rawPhone)
@@ -486,10 +594,11 @@ func (s *SMSService) testParams(event string) ([]string, error) {
 // It works before SMS is switched on, ignores the switches and the daily cap, and is
 // logged as a test message.
 func (s *SMSService) TestSend(ctx context.Context, rawPhone, event string) (SMSTestResult, error) {
-	cfg, err := s.loadConfig(ctx)
+	settings, err := s.loadSettings(ctx)
 	if err != nil {
 		return SMSTestResult{}, err
 	}
+	cfg := settings.cfg
 	phone, ok := normalizeSMSPhone(rawPhone)
 	if !ok {
 		return SMSTestResult{}, ErrSMSPhoneInvalid
@@ -574,7 +683,7 @@ func (s *SMSService) runOnce() {
 // 7, 3 and 1 days before an active subscription expires, once each, to the user's bound
 // phone. Every instance runs it; the deduplication key stops repeats.
 func (s *SMSService) sendExpiryReminders(ctx context.Context) {
-	if s.subs == nil || !s.config(ctx).wants(service.MokSMSEventSubscriptionExpiry) {
+	if s.subs == nil || !s.current(ctx).wants(service.MokSMSEventSubscriptionExpiry) {
 		return
 	}
 	now := s.now()

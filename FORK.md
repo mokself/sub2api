@@ -50,7 +50,7 @@ git grep -n "\[mok\]"
 | `frontend/src/views/admin/AccountsView.vue` | 导入 `@/mok/accounts`；在 `allColumns` 的 `return c` 前调用 `mokAddAccountColumns(c, t)`；加 `#cell-mok_claude_plan` 插槽 | 账号管理的「Claude 套餐」列，见第 11 节 |
 | `backend/internal/service/affiliate_service.go` | `AccrueInviteRebateForOrder` 里算出 `rebateRatePercent` 后加一段 `mokTieredRebateRatePercent` 调用；`GetAffiliateDetail` 的 `EffectiveRebateRatePercent:` 一行改为调用 `mokEffectiveRebateRatePercent`；`AdminGetUserOverview` 里加一行 `mokTieredDisplayRatePercent`；`BindInviterByCode` 里查到邀请人之后加一段 `mokCheckInviterInScope` 调用；`listInvitees` 里的 `maskEmail(...)` 改为 `mokInviteeEmail(...)` | 阶梯返利的计算和比例展示；消耗返利模式下、或邀请人不在开启范围内时 `mokTieredRebateRatePercent` 返回 0，充值不返利；不在开启范围内的用户的邀请码不绑定；邀请返利页的已邀请用户显示完整邮箱。见第 11 节 |
 | `backend/internal/repository/affiliate_repo.go` | 常量 `affiliateCodeLength` 从 12 改为 4 | 系统生成的邀请码长度，见第 11 节 |
-| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />`；在「邮件设置」标签页末尾（`<!-- /Tab: Email -->` 上一行的 `</div>` 之前）加 `<MokSmsSettings />`；在「充值优惠阶梯」注释上方加 `<MokPaymentQuickAmounts v-if="form.payment_enabled" />` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片；邮件设置里的「短信通知」卡片；支付设置里的「充值快捷金额」卡片。见第 11 节 |
+| `frontend/src/views/admin/SettingsView.vue` | 在「专属用户管理」注释上方加 `<MokAffiliateSettings />`；在「邮件与短信」标签页（上游叫「邮件设置」）末尾（`<!-- /Tab: Email -->` 上一行的 `</div>` 之前）加 `<MokSmsSettings />`；「账号限额通知」卡片里，通知邮箱那段 `</div>` 下面加 `<MokAccountQuotaSmsPhones v-if="form.account_quota_notify_enabled" />`；在「充值优惠阶梯」注释上方加 `<MokPaymentQuickAmounts v-if="form.payment_enabled" />`；`AppLayout` 那行 import 下面导入 `mokSaveAccountQuotaSms`；`saveSettings()` 里 `await adminSettingsStore.fetch(true);` 下面加一行 `await mokSaveAccountQuotaSms();` | 系统设置里的「返利方式」（含消耗返利明细）和「阶梯返利」两张卡片；「邮件与短信」标签页里的「短信通知」卡片和账号限额告警的通知手机号（跟着页面的「保存设置」保存）；支付设置里的「充值快捷金额」卡片。见第 11 节 |
 | `backend/internal/service/update_service.go` | `NewUpdateService` 的 `buildType:` 一行改为调用 `mokUpdateServiceBuildType`；`CheckUpdate` 里的 `fetchLatestRelease` 改为 `mokFetchLatestRelease`；`PerformUpdate` 和 `fetchRollbackCandidates` 开头各加一段 `mokRejectOnlineUpdate` 检查；`getFromCache` 里加一段 `mokCheckCachedRelease` 检查；`compareVersions` 开头加一段 `mokCompareVersions` | 后台版本徽章检查 fork 自己的发布，不显示发布页链接、不提示上游版本，禁用在线更新和在线回退，见第 9 节 |
 | `frontend/src/views/user/AffiliateView.vue` | 在统计卡片下方加 `<MokAffiliateUserPanel />` | 用户邀请返利页的阶梯进度卡片、消耗返利卡片和「未对你开启」的提示；消耗返利模式下改写页面上讲充值返利的两句话 |
 | `frontend/src/components/admin/user/UserEditModal.vue` | 在 `<UserAttributeForm … />` 下面加 `<MokUserAffiliateSwitch :user-id="user?.id" />` | 用户编辑弹窗里的「邀请返利」开关，见第 11 节 |
@@ -58,6 +58,7 @@ git grep -n "\[mok\]"
 | `backend/internal/service/ops_alert_evaluator_service.go` | `evaluateOnce` 里 `eventsCreated++` 下面加一行 `mokSendOpsAlertSMS` | 运维告警的短信，见第 11 节 |
 | `frontend/src/components/user/profile/ProfileBalanceNotifyCard.vue` | 在 `v-if="notifyEnabled"` 那段的 `</template>` 下面加 `<MokSmsNotifyPhone />` | 余额不足提醒卡片里「通知邮箱」下面的「短信提醒」，见第 11 节 |
 | `frontend/src/views/user/ProfileView.vue` | 在 `<ProfileTotpCard />` 上面加 `<MokSmsNotifyPhone v-if="user && !balanceLowNotifyEnabled" standalone />` | 管理员关掉余额不足提醒时，个人资料页单独显示「短信提醒」卡片，用于订阅到期提醒 |
+| `frontend/src/views/admin/ops/components/OpsSettingsDialog.vue` | `opsAPI` 那行 import 下面导入 `mokSaveOpsAlertSms`；`saveAllSettings()` 的 `try {` 里第一行加 `await mokSaveOpsAlertSms()`；「评估报告配置」注释上方加 `<MokOpsAlertSms />` | 运维监控设置里、邮件「预警配置」下面的「短信告警」，跟着弹窗的「保存」保存，见第 11 节 |
 | `frontend/src/views/user/PaymentView.vue` | `<AmountInput>` 的 `:amounts="[10, 20, ...]"` 一行改为 `($mokQuickAmounts ?? ((amounts) => amounts))([10, 20, ...])` | 充值页的快捷金额按钮改用后台设置的金额，见第 11 节 |
 | `frontend/src/components/layout/AppSidebar.vue` | 在 `vue-router` 和 `vue-i18n` 两行 import 之间导入 `mokFilterNavItems`；`finalizeNav()` 里的 `applyFeatureFlags(items)` 外面包一层 `mokFilterNavItems(...)` | 按用户决定是否显示侧边栏的「邀请返利」入口，见第 11 节 |
 
@@ -605,18 +606,22 @@ docker compose up -d
 - **哪些通知发短信**：
   - **余额不足提醒**：发到用户绑定的手机号。触发点和邮件相同（余额第一次降到阈值以下），沿用上游的总开关、用户自己的开关和阈值。每人每天最多一条。
   - **订阅到期提醒**：发到用户绑定的手机号，到期前 7、3、1 天各一条。由 fork 自己的后台任务发送，每 10 分钟检查一次。开关在短信设置里，和上游的「启用订阅到期提醒」（邮件）互不影响，也不需要配置 SMTP。
-  - **运维告警**：发到管理员告警手机号，在告警规则触发、产生新的告警事件时发送。遵守告警静默设置。可以设最低级别：P0 算严重，P1 算警告，其余算提示。和规则上的「邮件通知」开关无关。
-  - **账号限额告警**：发到管理员告警手机号。触发规则和邮件相同：账号里设的告警阈值。需要打开上游的「账号限额通知」总开关，但不需要填管理员邮箱。每个账号的每种限额每天最多一条。
+  - **运维告警**：在告警规则触发、产生新的告警事件时发送。遵守告警静默设置。和规则上的「邮件通知」开关无关。
+    - 设置在「运维监控 → 设置」弹窗里，邮件的「预警配置」下面的「短信告警」：开关、预警接收手机号（最多 10 个）、最低级别（和邮件一样：全部、严重、警告、信息；P0 算严重，P1 算警告，其余算信息）。没有手机号时开关自动关闭，和上游的告警邮件一样。
+    - 跟着弹窗底部的「保存」一起保存：上游的 `saveAllSettings()` 先调用 `mokSaveOpsAlertSms()`，短信部分保存失败时弹窗报错、不关闭，上游的设置也不保存。
+  - **账号限额告警**：触发规则和邮件相同：账号里设的告警阈值，并且要打开上游的「账号限额通知」总开关。每个账号的每种限额每天最多一条。
+    - 接收手机号在「邮件与短信」标签页的「账号限额通知」卡片里，「通知邮箱」下面的「通知手机号」，和邮箱一样每个号码有自己的开关；总开关关着时不显示。
+    - 跟着页面右下角的「保存设置」一起保存：上游的 `saveSettings()` 在自己的设置保存成功后调用 `mokSaveAccountQuotaSms()`；号码不对或保存失败时页面报错，不提示「设置保存成功」。
   - **不发短信**：充值成功、订阅购买成功，以及风控的三种通知（违规警告、账号停用、网络安全政策通知）。
 - **用户绑定手机号**：在个人资料 →「余额不足提醒」卡片 →「通知邮箱」下面的「短信提醒」里操作。
   - 只能绑一个中国大陆手机号（+86），用短信验证码绑定，绑定后可以暂停或解绑。
   - 管理员关掉了上游的余额不足提醒时，余额卡片不显示；个人资料页会单独显示一张「短信提醒」卡片，只讲订阅到期提醒。
   - 管理员没配置好短信（没启用、没填验证码模板，或者余额不足和订阅到期两种提醒都没开）时，用户看不到这部分。
   - 验证码：6 位，5 分钟有效，60 秒内不能重发；每人每天最多 5 条，每个号码每天也最多 5 条；猜错 5 次作废。
-- **管理员设置**：在系统设置 → 邮件设置最下面的「短信通知」卡片里。卡片单独保存，页面右下角的「保存设置」不管这张卡片。
+- **管理员设置**：在系统设置 →「邮件与短信」标签页最下面的「短信通知」卡片里。卡片用自己的「保存短信设置」按钮保存，页面右下角的「保存设置」不管这张卡片。管理员接收告警的手机号不在这里，见上面运维告警和账号限额告警两条。
+  - 这个标签页上游叫「邮件设置」，因为放了短信卡片，fork 把名字改成「邮件与短信」（英文 Email & SMS）。改名只是运行时覆盖上游文案 `admin.settings.tabs.email`，写在 `frontend/src/mok/i18n/upstreamOverrides.ts` 里，没改上游的语言包。
   - 腾讯云配置：SecretId、SecretKey、SDK AppID、短信签名、地域。SecretKey 保存后不再返回给页面，留空表示不修改。
-  - 五个模板 ID：验证码、余额不足、订阅到期、运维告警、账号限额。每个都附有建议模板文字和变量顺序，四种通知各有一个开关。
-  - 管理员告警手机号（最多 10 个）、运维告警最低级别。
+  - 五个模板 ID：验证码、余额不足、订阅到期、运维告警、账号限额。每个都附有建议模板文字和变量顺序。余额不足和订阅到期在这里各有一个开关；运维告警和账号限额告警只在这里填模板 ID，开关和手机号在各自的地方。
   - 每天上限：默认 10，0 为不限。用户通知按每个用户计，管理员告警按每个号码计；验证码和测试短信不计入。
   - 「仅记录不发送」：只写发送记录，不真正发出。不填腾讯云配置也能走通全流程，验证码会显示在发送记录里。
   - 「发送测试短信」：用已保存的设置，把所选模板填上示例值，发到指定号码。没启用短信通知也能测。
@@ -633,9 +638,12 @@ docker compose up -d
   - 超出每天上限的记为「超出每天上限」，之后不会补发。
   - 发送失败不重试，也不计入上限。
 - **存储与接口**：
-  - 配置存在 `settings` 表的 `mok_sms_config` 键里（JSON）。表有 `mok_sms_phones`（绑定的手机号）、`mok_sms_codes`（待验证的验证码，只存哈希）、`mok_sms_logs`（发送记录，保留 90 天），迁移是 `mok_006_sms.sql`。
+  - 配置分三个 `settings` 键（都是 JSON）：`mok_sms_config`（短信卡片）、`mok_sms_ops_alert`（运维告警的开关、手机号、最低级别）、`mok_sms_account_quota`（账号限额告警的手机号）。2026-11-18 第一版把两种管理员告警共用的手机号存在 `mok_sms_config` 的 `admin_phones` 里；两个新键还没保存过时，从这些旧字段读出来，保存短信卡片前先写进新键，所以升级不会丢号码。表有 `mok_sms_phones`（绑定的手机号）、`mok_sms_codes`（待验证的验证码，只存哈希）、`mok_sms_logs`（发送记录，保留 90 天），迁移是 `mok_006_sms.sql`。
   - 管理端：
     - `GET` / `PUT /api/v1/mok/admin/sms/config`；
+    - `GET` / `PUT /api/v1/mok/admin/sms/ops-alert`，请求体 `{"enabled": true, "phones": ["..."], "min_level": "warning"}`；
+    - `GET` / `PUT /api/v1/mok/admin/sms/account-quota`，请求体 `{"phones": [{"phone": "...", "disabled": false}]}`；
+    - 这两个接口的返回还带 `ready`：短信卡片是否已经启用、并填了对应的模板 ID，页面据此提示「短信还不能发出」。
     - `POST /api/v1/mok/admin/sms/test`，请求体 `{"phone": "...", "event": "balance_low"}`；
     - `GET /api/v1/mok/admin/sms/logs`，参数 `page`、`page_size`、`search`。
   - 用户端：
@@ -649,10 +657,11 @@ docker compose up -d
   - 后端：
     - 上游 service 包里的接入函数在 `backend/internal/service/sms_notify_mok.go`。它定义了 `MokSMSNotifier` 接口，fork 模块启动时用 `MokSetSMSNotifier` 装上实现。
     - 短信服务在 `backend/internal/mok/` 下：`sms_service.go`（发送、绑定、订阅到期任务）、`sms_config.go`、`sms_store.go`、`sms_tencent.go`、`sms_handler.go`。
-  - 前端：`frontend/src/mok/sms/` 下的 `SmsSettings.vue`、`SmsLogs.vue`、`SmsNotifyPhone.vue` 和 `sms.ts`；接口封装在 `frontend/src/mok/api/sms.ts`。
+  - 前端：`frontend/src/mok/sms/` 下的 `SmsSettings.vue`、`SmsLogs.vue`、`SmsNotifyPhone.vue`、`OpsAlertSms.vue`（运维监控设置里的短信告警）、`AccountQuotaSmsPhones.vue`（账号限额卡片里的通知手机号）、`adminAlerts.ts`（这两处的状态和给上游保存函数调用的 `mokSaveOpsAlertSms` / `mokSaveAccountQuotaSms`）和 `sms.ts`；接口封装在 `frontend/src/mok/api/sms.ts`。
 - **接入点的合并模拟**：用上游过去一年的提交回放。
   - `balance_notify_service.go` 的两处、`ops_alert_evaluator_service.go`、`ProfileBalanceNotifyCard.vue`、`SettingsView.vue` 的接入点都能干净合并。唯一的例外是 `CheckAccountQuotaAfterIncrement` 开头那处：2026-04 上游修改这个函数签名的那次提交会冲突一次。
   - `ProfileView.vue` 在 2026-04 上游重做个人资料页时会冲突两次，接入点放在这个文件的任何位置都避不开。
+  - 2026-11-20 把管理员告警移出短信卡片时新加的接入点：`OpsSettingsDialog.vue` 的三处、`SettingsView.vue` 的三处，回放上游一年的提交都没有冲突。保存函数里的调用用的是普通 import，没用 `await import(...)`：上游的运维设置测试点了保存后马上检查上游接口有没有被调用，动态 import 多等的那一下会让它失败。
 
 ### 充值快捷金额（2026-11-19）
 

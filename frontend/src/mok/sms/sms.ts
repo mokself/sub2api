@@ -1,5 +1,5 @@
 import { extractApiErrorCode, extractApiErrorMetadata, extractApiErrorMessage } from '@/utils/apiError'
-import type { SmsEvent, SmsTemplateKind } from '../api/sms'
+import type { SmsTemplateKind, SmsUserEvent } from '../api/sms'
 
 /** Template kinds in the order the settings card lists them. */
 export const smsTemplateKinds: SmsTemplateKind[] = [
@@ -10,8 +10,8 @@ export const smsTemplateKinds: SmsTemplateKind[] = [
   'account_quota'
 ]
 
-/** Notifications the admin can switch on and off. */
-export const smsEvents: SmsEvent[] = ['balance_low', 'subscription_expiry', 'ops_alert', 'account_quota']
+/** The user notifications the SMS card switches on and off; the admin alerts are switched where their phones are set. */
+export const smsUserEvents: SmsUserEvent[] = ['balance_low', 'subscription_expiry']
 
 /** Template parameters per kind, in order; the backend fills them in this order. */
 export const smsTemplateParamCount: Record<SmsTemplateKind, number> = {
@@ -45,19 +45,6 @@ export function normalizeSmsPhone(raw: string): string | null {
   else if (phone.startsWith('0086')) phone = phone.slice(4)
   else if (phone.length === 13 && phone.startsWith('86')) phone = phone.slice(2)
   return /^1[3-9]\d{9}$/.test(phone) ? phone : null
-}
-
-/** Admin phones are edited one per line; returns the numbers and the lines that are not one. */
-export function parseSmsPhoneLines(text: string): { phones: string[]; invalid: string[] } {
-  const phones: string[] = []
-  const invalid: string[] = []
-  for (const line of text.split(/[\n,，;；]/)) {
-    if (!line.trim()) continue
-    const phone = normalizeSmsPhone(line)
-    if (!phone) invalid.push(line.trim())
-    else if (!phones.includes(phone)) phones.push(phone)
-  }
-  return { phones, invalid }
 }
 
 /** Template IDs are numbers such as 1234567. */

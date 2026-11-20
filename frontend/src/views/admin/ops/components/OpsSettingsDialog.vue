@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { opsAPI } from '@/api/admin/ops'
+import { mokSaveOpsAlertSms } from '@/mok/sms/adminAlerts' // [mok] SMS alerts, see FORK.md
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -208,6 +209,7 @@ async function saveAllSettings() {
 
   saving.value = true
   try {
+    await mokSaveOpsAlertSms() // [mok] SMS alerts, see FORK.md
     // 无收件人时自动禁用邮件通知
     if (emailConfig.value) {
       if (emailConfig.value.alert.enabled && emailConfig.value.alert.recipients.length === 0) {
@@ -314,6 +316,7 @@ async function saveAllSettings() {
         </div>
       </div>
 
+      <MokOpsAlertSms /> <!-- [mok] SMS alerts, see FORK.md -->
       <!-- 评估报告配置 -->
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
         <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.reportConfig') }}</h4>

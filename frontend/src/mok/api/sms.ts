@@ -3,6 +3,8 @@ import type { PaginatedResponse } from '@/types'
 
 /** Notifications that can go out by SMS (backend service/sms_notify_mok.go). */
 export type SmsEvent = 'balance_low' | 'subscription_expiry' | 'ops_alert' | 'account_quota'
+/** The notifications users get on their bound phone, switched on and off in the SMS card. */
+export type SmsUserEvent = 'balance_low' | 'subscription_expiry'
 /** Every message kind with a template: the notifications and the verification code. */
 export type SmsTemplateKind = 'verify_code' | SmsEvent
 /** Message kinds in the send log: the template kinds plus the admin's test messages. */
@@ -25,10 +27,8 @@ export interface SmsConfig {
   /** Notifications a user (admin alerts: a phone) gets a day; 0 means no cap. */
   daily_limit: number
   templates: Record<SmsTemplateKind, string>
-  events: Record<SmsEvent, boolean>
-  /** Receive the ops alerts and account quota alerts; 11-digit mainland numbers. */
-  admin_phones: string[]
-  ops_alert_min_level: SmsMinLevel
+  /** The admin alerts are switched where their phones are set, see SmsOpsAlert and SmsAccountQuota. */
+  events: Record<SmsUserEvent, boolean>
 }
 
 export interface SmsConfigView extends SmsConfig {
@@ -63,7 +63,30 @@ export interface SmsPhoneStatus {
   phone: string
   enabled: boolean
   /** The reminders the bound phone receives. */
-  events: SmsEvent[]
+  events: SmsUserEvent[]
+}
+
+/** The SMS part of the ops alert settings, edited in ops monitoring → settings. */
+export interface SmsOpsAlert {
+  enabled: boolean
+  /** 11-digit mainland numbers. */
+  phones: string[]
+  min_level: SmsMinLevel
+}
+
+export interface SmsQuotaPhone {
+  phone: string
+  disabled: boolean
+}
+
+/** The SMS phones of the account quota alerts, edited in the account quota notification card. */
+export interface SmsAccountQuota {
+  phones: SmsQuotaPhone[]
+}
+
+/** Whether the SMS card is set up for these alerts: SMS switched on and the template set. */
+export interface SmsReady {
+  ready: boolean
 }
 
 export interface SmsCodeSent {
@@ -91,6 +114,26 @@ export async function listSmsLogs(query: { page: number; page_size: number; sear
   const { data } = await apiClient.get<PaginatedResponse<SmsLogEntry>>('/mok/admin/sms/logs', {
     params: { page: query.page, page_size: query.page_size, search: query.search ?? '' }
   })
+  return data
+}
+
+export async function getSmsOpsAlert(): Promise<SmsOpsAlert & SmsReady> {
+  const { data } = await apiClient.get<SmsOpsAlert & SmsReady>('/mok/admin/sms/ops-alert')
+  return data
+}
+
+export async function saveSmsOpsAlert(ops: SmsOpsAlert): Promise<SmsOpsAlert & SmsReady> {
+  const { data } = await apiClient.put<SmsOpsAlert & SmsReady>('/mok/admin/sms/ops-alert', ops)
+  return data
+}
+
+export async function getSmsAccountQuota(): Promise<SmsAccountQuota & SmsReady> {
+  const { data } = await apiClient.get<SmsAccountQuota & SmsReady>('/mok/admin/sms/account-quota')
+  return data
+}
+
+export async function saveSmsAccountQuota(quota: SmsAccountQuota): Promise<SmsAccountQuota & SmsReady> {
+  const { data } = await apiClient.put<SmsAccountQuota & SmsReady>('/mok/admin/sms/account-quota', quota)
   return data
 }
 

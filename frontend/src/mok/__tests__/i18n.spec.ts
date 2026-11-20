@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { i18n } from '@/i18n'
 import upstreamEn from '@/i18n/locales/en'
 import upstreamZh from '@/i18n/locales/zh'
-import { setAffiliateUsageWording } from '../i18n'
+import { installMokI18n, setAffiliateUsageWording } from '../i18n'
 import affiliateUsageWording from '../i18n/affiliateUsageWording'
 import en from '../i18n/en'
 import upstreamOverrides from '../i18n/upstreamOverrides'
@@ -124,6 +124,16 @@ describe('upstream sentences the fork rewords for good', () => {
         expect(placeholders(text), `${locale}: ${key}`).toEqual(placeholders(upstreamLeaves[key]))
       }
     }
+  })
+
+  it('applies the rewording when a locale is merged', () => {
+    i18n.global.setLocaleMessage('zh', upstreamZh as any)
+    i18n.global.locale.value = 'zh'
+    expect(i18n.global.t('admin.settings.tabs.email')).toBe('邮件设置')
+
+    installMokI18n()
+    expect(i18n.global.t('admin.settings.tabs.email')).toBe('邮件与短信')
+    expect(i18n.global.t('admin.settings.tabs.payment')).toBe('支付设置')
   })
 
   it('does not overlap the usage rebate wording, which comes and goes', () => {

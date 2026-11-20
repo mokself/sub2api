@@ -49,9 +49,7 @@ function configView(patch: Partial<SmsConfigView> = {}): SmsConfigView {
     region: 'ap-guangzhou',
     daily_limit: 10,
     templates: { verify_code: '', balance_low: '', subscription_expiry: '', ops_alert: '', account_quota: '' },
-    events: { balance_low: true, subscription_expiry: true, ops_alert: true, account_quota: true },
-    admin_phones: [],
-    ops_alert_min_level: '',
+    events: { balance_low: true, subscription_expiry: true },
     ...patch
   }
 }
@@ -78,7 +76,7 @@ describe('SmsSettings', () => {
 
   it('saves the form, keeping a stored secret key when the field is left empty', async () => {
     getSmsConfig.mockResolvedValue(
-      configView({ secret_id: 'id', secret_key_set: true, sdk_app_id: '1400000000', sign_name: '站点', admin_phones: ['13800138000'] })
+      configView({ secret_id: 'id', secret_key_set: true, sdk_app_id: '1400000000', sign_name: '站点' })
     )
     saveSmsConfig.mockImplementation(async (config) => configView({ ...config, secret_key: '', secret_key_set: true }))
     const wrapper = await mountSettings()
@@ -87,9 +85,7 @@ describe('SmsSettings', () => {
 
     await wrapper.get('[data-testid="mok-sms-enabled"]').trigger('click')
     await wrapper.get('[data-testid="mok-sms-template-id-balance_low"]').setValue(' 2002 ')
-    await wrapper.get('[data-testid="mok-sms-event-ops_alert"]').trigger('click')
-    await wrapper.get('[data-testid="mok-sms-admin-phones"]').setValue('13800138000\n+86 139 0013 9000\n13800138000')
-    await wrapper.get('[data-testid="mok-sms-min-level"]').setValue('warning')
+    await wrapper.get('[data-testid="mok-sms-event-subscription_expiry"]').trigger('click')
     expect(wrapper.find('[data-testid="mok-sms-unsaved"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="mok-sms-test-send"]').attributes('disabled')).toBeDefined()
 
@@ -100,22 +96,30 @@ describe('SmsSettings', () => {
     expect(payload.enabled).toBe(true)
     expect(payload.secret_key).toBe('')
     expect(payload.templates.balance_low).toBe(' 2002 ')
-    expect(payload.events.ops_alert).toBe(false)
-    expect(payload.admin_phones).toEqual(['13800138000', '13900139000'])
-    expect(payload.ops_alert_min_level).toBe('warning')
+    expect(payload.events).toEqual({ balance_low: true, subscription_expiry: false })
+    expect(payload).not.toHaveProperty('admin_phones')
     expect(showSuccess).toHaveBeenCalledWith('mok.sms.saved')
     expect(wrapper.find('[data-testid="mok-sms-unsaved"]').exists()).toBe(false)
+  })
+
+  it('switches only the user notifications; the admin alerts point to where they are set', async () => {
+    getSmsConfig.mockResolvedValue(configView())
+    const wrapper = await mountSettings()
+
+    expect(wrapper.find('[data-testid="mok-sms-event-balance_low"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="mok-sms-event-subscription_expiry"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="mok-sms-event-ops_alert"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="mok-sms-event-account_quota"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="mok-sms-template-ops_alert"]').text()).toContain('mok.sms.kinds.ops_alert.switchedAt')
+    expect(wrapper.get('[data-testid="mok-sms-template-account_quota"]').text()).toContain('mok.sms.kinds.account_quota.switchedAt')
+    expect(wrapper.get('[data-testid="mok-sms-template-verify_code"]').text()).toContain('mok.sms.kinds.verify_code.switchedAt')
+    expect(wrapper.find('[data-testid="mok-sms-template-id-ops_alert"]').exists()).toBe(true)
   })
 
   it('refuses invalid input before saving', async () => {
     getSmsConfig.mockResolvedValue(configView())
     const wrapper = await mountSettings()
 
-    await wrapper.get('[data-testid="mok-sms-admin-phones"]').setValue('13800138000\n12345')
-    await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
-    expect(showError).toHaveBeenLastCalledWith('mok.sms.validation.phones {"phones":"12345"}')
-
-    await wrapper.get('[data-testid="mok-sms-admin-phones"]').setValue('')
     await wrapper.get('[data-testid="mok-sms-template-id-verify_code"]').setValue('SMS_1')
     await wrapper.get('[data-testid="mok-sms-save"]').trigger('click')
     expect(showError).toHaveBeenLastCalledWith('mok.sms.validation.templateId')
