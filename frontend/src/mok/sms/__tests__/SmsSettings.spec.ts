@@ -159,6 +159,6 @@ describe('SmsSettings', () => {
     const wrapper = await mountSettings()
 
     await wrapper.get('[data-testid="mok-sms-copy-subscription_expiry"]').trigger('click')
-    expect(copyToClipboard).toHaveBeenCalledWith('您订阅的{1}将于{2}到期，剩余{3}天，请及时续费。', 'mok.sms.copied')
+    expect(copyToClipboard).toHaveBeenCalledWith('您的订阅即将到期。订阅名称：{1}，到期时间：{2}，剩余天数：{3}。', 'mok.sms.copied')
   })
 })

@@ -207,7 +207,7 @@ export default {
       },
       templates: 'SMS templates',
       templatesHint:
-        'Templates must be approved by Tencent Cloud first; the suggested templates below can serve as a starting point. The number and order of variables must match the suggested template. Each variable holds at most 20 characters; longer values are cut.',
+        'Templates must be approved by Tencent Cloud first; the suggested templates below can serve as a starting point. The number and order of variables must match the suggested template. Each variable holds at most 20 characters; longer values are cut. Carriers do not allow wording about payment, renewal or dunning, and every variable needs a title in front of it (such as 当前余额：), or the review rejects the template.',
       columns: {
         send: 'Send',
         templateId: 'Template ID'
