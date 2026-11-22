@@ -445,9 +445,8 @@ docker compose up -d
   ```
 
 - **上游自带会失败的单元测试。** 下面两个 `internal/service` 里的测试用纯上游代码跑也会失败，和 fork 无关。全量跑单元测试看到它们失败时不用排查，同步上游后再看是否已修复：
-  - `TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort`：2026-11-09（`6b4b37db4`）、2026-11-11（`530c5e3a4`）和 2026-11-18（`2af3f1e15`）都会失败；
-  - `TestCommandCodeGatewayPassesThroughCatalogProtocols`：2026-11-11（`530c5e3a4`）起，全量跑时时好时坏，单独跑能通过。它用了全局的模型协议缓存，应该是和并行的其他测试互相影响；2026-11-18 那次纯上游跑通过、fork 跑失败，测试本身和 fork 代码无关。
-- **上游自带会失败的前端测试**：`src/views/admin/__tests__/groupsOpenAIFast.spec.ts` 的「provides localized Ultra Fast switch labels naming the supported models」在 2026-11-18（`2af3f1e15`）失败：上游的 Ultra Fast 中文说明里没有测试要找的 `service_tier=ultrafast`。这个测试只读上游语言包，和 fork 无关。
+  - `TestOllamaProbeCallback_StaleLongDoesNotOverrideNewShort`：2026-11-09（`6b4b37db4`）、2026-11-11（`530c5e3a4`）、2026-11-18（`2af3f1e15`）和 2026-11-22（`328db26f4`，0.2.24）都会失败；
+  - `TestCommandCodeGatewayPassesThroughCatalogProtocols`：2026-11-11（`530c5e3a4`）起，全量跑时时好时坏，单独跑能通过。它用了全局的模型协议缓存，应该是和并行的其他测试互相影响；2026-11-18 那次纯上游跑通过、fork 跑失败，测试本身和 fork 代码无关；2026-11-22（0.2.24）全量跑又失败一次，单独跑通过。
 - **fork 的测试在不在 CI 里：**
   - 后端测试打了 `unit` / `integration` 构建标签，会跟着上游 CI 的 `make test-unit` / `make test-integration` 一起跑；
   - 前端的 CI 只跑根目录 `Makefile` 里列出的关键测试，fork 的前端测试不在其中，需要本地运行 `npx vitest run src/mok`。lint 和类型检查在 CI 里覆盖了 fork 代码。
