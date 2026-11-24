@@ -28,9 +28,9 @@ export interface AffiliateUsageRebateQuery {
 
 export type AffiliateUsageRebatePage = PaginatedResponse<AffiliateUsageRebateRecord>
 
-/** Every settled record, newest period first (GET /api/v1/mok/admin/affiliate-usage-rebates). */
+/** Every settled record, newest period first (GET /api/v1/admin/mok/affiliate-usage-rebates). */
 export async function listAffiliateUsageRebates(query: AffiliateUsageRebateQuery): Promise<AffiliateUsageRebatePage> {
-  const { data } = await apiClient.get<AffiliateUsageRebatePage>('/mok/admin/affiliate-usage-rebates', {
+  const { data } = await apiClient.get<AffiliateUsageRebatePage>('/admin/mok/affiliate-usage-rebates', {
     params: { page: query.page, page_size: query.page_size, search: query.search ?? '' }
   })
   return data

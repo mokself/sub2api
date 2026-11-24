@@ -95,45 +95,45 @@ export interface SmsCodeSent {
 }
 
 export async function getSmsConfig(): Promise<SmsConfigView> {
-  const { data } = await apiClient.get<SmsConfigView>('/mok/admin/sms/config')
+  const { data } = await apiClient.get<SmsConfigView>('/admin/mok/sms/config')
   return data
 }
 
 export async function saveSmsConfig(config: SmsConfig): Promise<SmsConfigView> {
-  const { data } = await apiClient.put<SmsConfigView>('/mok/admin/sms/config', config)
+  const { data } = await apiClient.put<SmsConfigView>('/admin/mok/sms/config', config)
   return data
 }
 
 /** Sends one template with sample values, using the saved settings. */
 export async function sendTestSms(phone: string, event: SmsTemplateKind): Promise<SmsTestResult> {
-  const { data } = await apiClient.post<SmsTestResult>('/mok/admin/sms/test', { phone, event })
+  const { data } = await apiClient.post<SmsTestResult>('/admin/mok/sms/test', { phone, event })
   return data
 }
 
 export async function listSmsLogs(query: { page: number; page_size: number; search?: string }): Promise<PaginatedResponse<SmsLogEntry>> {
-  const { data } = await apiClient.get<PaginatedResponse<SmsLogEntry>>('/mok/admin/sms/logs', {
+  const { data } = await apiClient.get<PaginatedResponse<SmsLogEntry>>('/admin/mok/sms/logs', {
     params: { page: query.page, page_size: query.page_size, search: query.search ?? '' }
   })
   return data
 }
 
 export async function getSmsOpsAlert(): Promise<SmsOpsAlert & SmsReady> {
-  const { data } = await apiClient.get<SmsOpsAlert & SmsReady>('/mok/admin/sms/ops-alert')
+  const { data } = await apiClient.get<SmsOpsAlert & SmsReady>('/admin/mok/sms/ops-alert')
   return data
 }
 
 export async function saveSmsOpsAlert(ops: SmsOpsAlert): Promise<SmsOpsAlert & SmsReady> {
-  const { data } = await apiClient.put<SmsOpsAlert & SmsReady>('/mok/admin/sms/ops-alert', ops)
+  const { data } = await apiClient.put<SmsOpsAlert & SmsReady>('/admin/mok/sms/ops-alert', ops)
   return data
 }
 
 export async function getSmsAccountQuota(): Promise<SmsAccountQuota & SmsReady> {
-  const { data } = await apiClient.get<SmsAccountQuota & SmsReady>('/mok/admin/sms/account-quota')
+  const { data } = await apiClient.get<SmsAccountQuota & SmsReady>('/admin/mok/sms/account-quota')
   return data
 }
 
 export async function saveSmsAccountQuota(quota: SmsAccountQuota): Promise<SmsAccountQuota & SmsReady> {
-  const { data } = await apiClient.put<SmsAccountQuota & SmsReady>('/mok/admin/sms/account-quota', quota)
+  const { data } = await apiClient.put<SmsAccountQuota & SmsReady>('/admin/mok/sms/account-quota', quota)
   return data
 }
 

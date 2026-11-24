@@ -1,6 +1,6 @@
 import { apiClient } from '@/api/client'
 
-/** One account's plan, as returned by GET /api/v1/mok/admin/claude-plan-tiers. */
+/** One account's plan, as returned by GET /api/v1/admin/mok/claude-plan-tiers. */
 export interface ClaudePlanItem {
   account_id: number
   status: 'ok' | 'error' | 'unsupported'
@@ -21,7 +21,7 @@ export interface ClaudePlanItem {
  * or stale ones from Anthropic before answering, so the timeout is longer than usual.
  */
 export async function getClaudePlanTiers(ids: number[], refresh = false): Promise<ClaudePlanItem[]> {
-  const { data } = await apiClient.get<{ items: ClaudePlanItem[] }>('/mok/admin/claude-plan-tiers', {
+  const { data } = await apiClient.get<{ items: ClaudePlanItem[] }>('/admin/mok/claude-plan-tiers', {
     params: refresh ? { ids: ids.join(','), refresh: true } : { ids: ids.join(',') },
     timeout: 120_000
   })

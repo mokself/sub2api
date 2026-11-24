@@ -113,8 +113,8 @@ func normalizePaymentQuickAmounts(amounts []float64) ([]float64, error) {
 
 // registerPaymentQuickAmountsRoutes serves the list:
 //
-//	GET /api/v1/mok/admin/payment/quick-amounts   the stored list
-//	PUT /api/v1/mok/admin/payment/quick-amounts   {"amounts": [30, 50, 100]}; [] restores upstream's buttons
+//	GET /api/v1/admin/mok/payment/quick-amounts   the stored list
+//	PUT /api/v1/admin/mok/payment/quick-amounts   {"amounts": [30, 50, 100]}; [] restores upstream's buttons
 //	GET /api/v1/mok/payment/quick-amounts         the list for the recharge page
 func registerPaymentQuickAmountsRoutes(admin, user *gin.RouterGroup, quickAmounts *PaymentQuickAmountsService) {
 	get := func(c *gin.Context) {

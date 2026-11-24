@@ -64,6 +64,34 @@ func (m *Module) Stop() {
 	}
 }
 
+// The fork's HTTP paths. Admin routes sit under upstream's /api/v1/admin because upstream
+// authorizes its admin API keys by path: a full-access key may call /api/v1/admin/... only
+// (adminaccess.RouteAllowed). User routes have no admin counterpart to follow.
+const (
+	adminBasePath = "/api/v1/admin/mok"
+	userBasePath  = "/api/v1/mok"
+)
+
+// routeDeps are the services the fork's handlers use.
+type routeDeps struct {
+	settings            *service.SettingService
+	affiliates          *service.AffiliateService
+	claudePlan          *ClaudePlanService
+	usageRebate         *service.MokAffiliateUsageRebateService
+	sms                 *SMSService
+	paymentQuickAmounts *PaymentQuickAmountsService
+}
+
+// registerRoutes registers every fork route on the two groups.
+func registerRoutes(admin, user *gin.RouterGroup, d routeDeps) {
+	registerClaudePlanRoutes(admin, d.claudePlan)
+	registerAffiliateTierRoutes(admin, user, d.settings, d.affiliates)
+	registerAffiliateModeRoutes(admin, user, d.usageRebate)
+	registerAffiliateScopeRoutes(admin, user, d.affiliates)
+	registerSMSRoutes(admin, user, d.sms)
+	registerPaymentQuickAmountsRoutes(admin, user, d.paymentQuickAmounts)
+}
+
 // NewModule registers the fork routes. Admin routes get the same guards as upstream's
 // /api/v1/admin group plus a refusal of restricted admin API keys; user routes get the
 // guards of upstream's authenticated user routes.
@@ -82,7 +110,7 @@ func NewModule(
 ) *Module {
 	panelRateLimiter := middleware.NewPanelRateLimiter(redisClient, settingService)
 
-	admin := r.Group("/api/v1/mok/admin")
+	admin := r.Group(adminBasePath)
 	admin.Use(
 		gin.HandlerFunc(adminAuth),
 		panelRateLimiter.Global(),
@@ -91,7 +119,7 @@ func NewModule(
 		rejectRestrictedAdminKeys,
 	)
 
-	user := r.Group("/api/v1/mok")
+	user := r.Group(userBasePath)
 	user.Use(
 		gin.HandlerFunc(jwtAuth),
 		middleware.BackendModeUserGuard(settingService),
@@ -99,12 +127,14 @@ func NewModule(
 		gin.HandlerFunc(auditLog),
 	)
 
-	registerClaudePlanRoutes(admin, claudePlan)
-	registerAffiliateTierRoutes(admin, user, settingService, affiliateService)
-	registerAffiliateModeRoutes(admin, user, affiliateUsageRebate)
-	registerAffiliateScopeRoutes(admin, user, affiliateService)
-	registerSMSRoutes(admin, user, sms)
-	registerPaymentQuickAmountsRoutes(admin, user, paymentQuickAmounts)
+	registerRoutes(admin, user, routeDeps{
+		settings:            settingService,
+		affiliates:          affiliateService,
+		claudePlan:          claudePlan,
+		usageRebate:         affiliateUsageRebate,
+		sms:                 sms,
+		paymentQuickAmounts: paymentQuickAmounts,
+	})
 
 	affiliateUsageRebate.Start()
 	// The SMS channel of upstream's notifications, see service/sms_notify_mok.go.
@@ -113,8 +143,11 @@ func NewModule(
 	return &Module{ClaudePlan: claudePlan, AffiliateUsageRebate: affiliateUsageRebate, SMS: sms}
 }
 
-// rejectRestrictedAdminKeys keeps scoped admin API keys out. Fork routes take raw
-// account IDs and do not implement upstream's per-account scope checks.
+// rejectRestrictedAdminKeys keeps restricted admin API keys out; full-access keys, the
+// legacy admin key and admin logins pass. Upstream's adminAuth already refuses restricted
+// keys here, since its permission catalog lists no fork route; this check stays in case
+// that catalog ever matches one. Fork routes take raw IDs and do not implement upstream's
+// per-account scope checks.
 func rejectRestrictedAdminKeys(c *gin.Context) {
 	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
 		middleware.AbortWithError(c, http.StatusForbidden, "MOK_RESTRICTED_ADMIN_KEY", "restricted admin API keys cannot use this endpoint")

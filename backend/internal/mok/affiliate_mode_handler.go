@@ -11,9 +11,9 @@ import (
 // registerAffiliateModeRoutes serves the affiliate rebate mode and the usage rebate records
 // (service/affiliate_usage_rebate_mok.go):
 //
-//	GET  /api/v1/mok/admin/affiliate-rebate-mode    mode, usage window and recent settled days
-//	PUT  /api/v1/mok/admin/affiliate-rebate-mode    {"mode": "recharge" | "usage"}
-//	GET  /api/v1/mok/admin/affiliate-usage-rebates  every settled record; page, page_size, search
+//	GET  /api/v1/admin/mok/affiliate-rebate-mode    mode, usage window and recent settled days
+//	PUT  /api/v1/admin/mok/affiliate-rebate-mode    {"mode": "recharge" | "usage"}
+//	GET  /api/v1/admin/mok/affiliate-usage-rebates  every settled record; page, page_size, search
 //	GET  /api/v1/mok/affiliate/usage-rebates        the signed-in inviter's records; page, page_size
 func registerAffiliateModeRoutes(admin, user *gin.RouterGroup, usageRebate *service.MokAffiliateUsageRebateService) {
 	h := &affiliateModeHandler{usageRebate: usageRebate}

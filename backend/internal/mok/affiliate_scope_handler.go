@@ -15,11 +15,11 @@ const affiliateSelectedUsersMaxPageSize = 100
 // registerAffiliateScopeRoutes serves the affiliate scope, the feature for selected users
 // only (service/affiliate_scope_mok.go):
 //
-//	GET  /api/v1/mok/admin/affiliate-scope            scope and number of selected users
-//	PUT  /api/v1/mok/admin/affiliate-scope            {"scope": "all" | "selected"}
-//	GET  /api/v1/mok/admin/affiliate-users            the selected users; page, page_size
-//	GET  /api/v1/mok/admin/affiliate-users/:user_id   one user's switch
-//	PUT  /api/v1/mok/admin/affiliate-users/:user_id   {"selected": true | false}
+//	GET  /api/v1/admin/mok/affiliate-scope            scope and number of selected users
+//	PUT  /api/v1/admin/mok/affiliate-scope            {"scope": "all" | "selected"}
+//	GET  /api/v1/admin/mok/affiliate-users            the selected users; page, page_size
+//	GET  /api/v1/admin/mok/affiliate-users/:user_id   one user's switch
+//	PUT  /api/v1/admin/mok/affiliate-users/:user_id   {"selected": true | false}
 //	GET  /api/v1/mok/affiliate/access                 whether the feature is on for the signed-in user,
 //	                                                  and whether they still have rebate quota if not
 func registerAffiliateScopeRoutes(admin, user *gin.RouterGroup, affiliates *service.AffiliateService) {

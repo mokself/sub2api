@@ -13,7 +13,7 @@ export interface AffiliateUsageRebateDay {
   rebate_total: number
 }
 
-/** GET/PUT /api/v1/mok/admin/affiliate-rebate-mode */
+/** GET/PUT /api/v1/admin/mok/affiliate-rebate-mode */
 export interface AffiliateRebateModeStatus {
   mode: AffiliateRebateMode
   /** Start of the usage window: the last switch to usage mode. */
@@ -26,11 +26,11 @@ export interface AffiliateRebateModeStatus {
 }
 
 export async function getAffiliateRebateMode(): Promise<AffiliateRebateModeStatus> {
-  const { data } = await apiClient.get<AffiliateRebateModeStatus>('/mok/admin/affiliate-rebate-mode')
+  const { data } = await apiClient.get<AffiliateRebateModeStatus>('/admin/mok/affiliate-rebate-mode')
   return data
 }
 
 export async function setAffiliateRebateMode(mode: AffiliateRebateMode): Promise<AffiliateRebateModeStatus> {
-  const { data } = await apiClient.put<AffiliateRebateModeStatus>('/mok/admin/affiliate-rebate-mode', { mode })
+  const { data } = await apiClient.put<AffiliateRebateModeStatus>('/admin/mok/affiliate-rebate-mode', { mode })
   return data
 }

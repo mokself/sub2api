@@ -20,7 +20,7 @@ type claudePlanHandler struct {
 	svc *ClaudePlanService
 }
 
-// list handles GET /api/v1/mok/admin/claude-plan-tiers?ids=1,2,3[&refresh=true].
+// list handles GET /api/v1/admin/mok/claude-plan-tiers?ids=1,2,3[&refresh=true].
 func (h *claudePlanHandler) list(c *gin.Context) {
 	ids, err := parseClaudePlanIDs(c.Query("ids"))
 	if err != nil {

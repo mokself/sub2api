@@ -11,14 +11,14 @@ const smsLogsMaxPageSize = 100
 
 // registerSMSRoutes serves the SMS channel (sms_service.go):
 //
-//	GET    /api/v1/mok/admin/sms/config         the SMS card; the secret key is never returned
-//	PUT    /api/v1/mok/admin/sms/config         save the SMS card; an empty secret_key keeps the stored one
-//	GET    /api/v1/mok/admin/sms/ops-alert      the SMS part of the ops alert settings
-//	PUT    /api/v1/mok/admin/sms/ops-alert      {"enabled", "phones", "min_level"}
-//	GET    /api/v1/mok/admin/sms/account-quota  the SMS phones of the account quota alerts
-//	PUT    /api/v1/mok/admin/sms/account-quota  {"phones": [{"phone", "disabled"}]}
-//	POST   /api/v1/mok/admin/sms/test     {"phone", "event"}: send one template with sample values
-//	GET    /api/v1/mok/admin/sms/logs     the send log; page, page_size, search
+//	GET    /api/v1/admin/mok/sms/config         the SMS card; the secret key is never returned
+//	PUT    /api/v1/admin/mok/sms/config         save the SMS card; an empty secret_key keeps the stored one
+//	GET    /api/v1/admin/mok/sms/ops-alert      the SMS part of the ops alert settings
+//	PUT    /api/v1/admin/mok/sms/ops-alert      {"enabled", "phones", "min_level"}
+//	GET    /api/v1/admin/mok/sms/account-quota  the SMS phones of the account quota alerts
+//	PUT    /api/v1/admin/mok/sms/account-quota  {"phones": [{"phone", "disabled"}]}
+//	POST   /api/v1/admin/mok/sms/test     {"phone", "event"}: send one template with sample values
+//	GET    /api/v1/admin/mok/sms/logs     the send log; page, page_size, search
 //	GET    /api/v1/mok/sms/phone          the signed-in user's bound phone and whether SMS is available
 //	POST   /api/v1/mok/sms/phone/code     {"phone"}: send a verification code
 //	POST   /api/v1/mok/sms/phone          {"phone", "code"}: bind the number

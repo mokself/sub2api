@@ -11,14 +11,14 @@ export async function getPaymentQuickAmounts(): Promise<PaymentQuickAmounts> {
   return data
 }
 
-/** For the settings card (GET /api/v1/mok/admin/payment/quick-amounts). */
+/** For the settings card (GET /api/v1/admin/mok/payment/quick-amounts). */
 export async function getAdminPaymentQuickAmounts(): Promise<PaymentQuickAmounts> {
-  const { data } = await apiClient.get<PaymentQuickAmounts>('/mok/admin/payment/quick-amounts')
+  const { data } = await apiClient.get<PaymentQuickAmounts>('/admin/mok/payment/quick-amounts')
   return data
 }
 
 /** Saves the list; [] restores upstream's buttons. */
 export async function savePaymentQuickAmounts(amounts: number[]): Promise<PaymentQuickAmounts> {
-  const { data } = await apiClient.put<PaymentQuickAmounts>('/mok/admin/payment/quick-amounts', { amounts })
+  const { data } = await apiClient.put<PaymentQuickAmounts>('/admin/mok/payment/quick-amounts', { amounts })
   return data
 }

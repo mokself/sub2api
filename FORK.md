@@ -17,7 +17,7 @@
 | 前端代码 | `frontend/src/mok/`，测试放在 `__tests__/` 里，和上游一致 |
 | 数据库迁移 | `backend/migrations/mok_NNN_<描述>.sql`，并发索引照旧用 `_notx.sql` 后缀 |
 | 数据库表 | 表名以 `mok_` 开头 |
-| HTTP 接口 | `/api/v1/mok/...` |
+| HTTP 接口 | 管理端 `/api/v1/admin/mok/...`，用户端 `/api/v1/mok/...`，见 4.1 |
 | 配置 | 配置文件中的 `mok:` 段，对应环境变量 `MOK_*` |
 | 前端文案 | key 统一放在 `mok.` 下 |
 | CI | `.github/workflows/mok-*.yml` |
@@ -74,9 +74,11 @@ git grep -n "\[mok\]"
 
 新模块放在 `backend/internal/mok/`，导出一个 wire `ProviderSet`。根对象 `mok.Module` 的 provider 接收 `*gin.Engine` 和所需的上游依赖，在构造时注册自己的路由。这样 `router.go`、`http.go`、`handler.go` 都不用改。实际写法见 `backend/internal/mok/module.go`：
 
-- 管理端接口挂在 `/api/v1/mok/admin` 下；
+- 管理端接口挂在 `/api/v1/admin/mok` 下，必须在 `/api/v1/admin/` 里面：上游按路径给管理密钥授权（`internal/pkg/adminaccess/catalog.go` 的 `RouteAllowed`），全权密钥只能调用 `/api/v1/admin/` 开头的接口。2026-11-24 之前 fork 用的是 `/api/v1/mok/admin`，管理密钥一律被拒（403「管理密钥未获此操作权限」），只有管理员登录和旧版单一管理密钥能用。
 - 中间件链和上游 `/api/v1/admin` 一致（管理员鉴权、审计、合规确认）；
-- 另外拒绝受限范围的管理密钥，因为 fork 接口没有实现上游按账号做的范围校验。
+- 受限范围的管理密钥调不了 fork 接口：上游的权限目录里没有 fork 的接口，`RouteAllowed` 直接拒绝；`module.go` 里的 `rejectRestrictedAdminKeys` 再挡一次，因为 fork 接口没有实现上游按账号做的范围校验。
+- 用户端接口挂在 `/api/v1/mok` 下，中间件链和上游登录后的用户接口一致。
+- 两组路由都由 `module.go` 的 `registerRoutes` 注册；`admin_routes_test.go` 把上游的管理端路由和 fork 路由注册到同一个引擎上，检查路由不冲突、每个 fork 管理端接口都能用全权管理密钥调用、受限密钥被拒。新加管理端接口时不用改这个测试。
 
 `mok.Module` 是这样被构建出来的，`wire.go` 里只改了一行：把 `server.ProviderSet,` 换成 `server.ProvideRouter, mok.ServerProviderSet,`。
 
@@ -471,7 +473,7 @@ docker compose up -d
     - 失败后 10 分钟内不自动重试，并保留上次成功的套餐；
     - 全局最多同时发起 8 个 profile 请求。
   - 前端：
-    - 列表加载后，把当前页的 Claude OAuth 账号按每批 20 个合并请求 `GET /api/v1/mok/admin/claude-plan-tiers?ids=…`；
+    - 列表加载后，把当前页的 Claude OAuth 账号按每批 20 个合并请求 `GET /api/v1/admin/mok/claude-plan-tiers?ids=…`；
     - 单元格上的刷新按钮会带 `refresh=true` 强制重新获取。
 - **代码位置**：后端在 `backend/internal/mok/`，前端在 `frontend/src/mok/accounts/` 和 `frontend/src/mok/api/claudePlan.ts`。
 
@@ -495,7 +497,7 @@ docker compose up -d
   - 管理端「邀请返利 → 记录」里的用户概览，也显示当前档位的比例。
 - **存储与接口**：
   - 阶梯存在 `settings` 表的 `mok_affiliate_rebate_tiers` 键里（JSON 数组），不需要迁移。
-  - 管理端：`GET` / `PUT /api/v1/mok/admin/affiliate-rebate-tiers`，最多 20 档，比例 0–100，门槛大于 0 且不能重复；`PUT` 会记入操作审计。
+  - 管理端：`GET` / `PUT /api/v1/admin/mok/affiliate-rebate-tiers`，最多 20 档，比例 0–100，门槛大于 0 且不能重复；`PUT` 会记入操作审计。
   - 用户端：`GET /api/v1/mok/affiliate/rebate-tiers`。
 - **出错时**：查询累计额失败时，这笔返利会返回错误：在线支付订单会走上游原有的重试流程，不会按全局比例少返；只用于展示的地方查询失败时退回显示全局比例。
 - **代码位置**：
@@ -533,8 +535,8 @@ docker compose up -d
   - 结算明细在 `mok_affiliate_usage_rebate_items` 表（每个被邀请人每个时段一行），时段汇总在 `mok_affiliate_usage_rebate_periods` 表。迁移 `mok_003_affiliate_usage_rebate_periods.sql` 建这两张表，并把 `mok_002` 时期按天结算的记录搬过来，一天作为一个时段。
   - `mok_002` 的两张表：`mok_affiliate_usage_rebate_days` 在 `mok_003` 里删除；`mok_affiliate_usage_rebates` 保留，里面只留「升级时某一天结算到一半」的记录，正常情况下是空的。按小时结算时会跳过这些被邀请人的那一天，避免再返一次。
   - 管理端：
-    - `GET` / `PUT /api/v1/mok/admin/affiliate-rebate-mode`，`PUT` 的请求体是 `{"mode": "usage"}`，会记入操作审计；
-    - `GET /api/v1/mok/admin/affiliate-usage-rebates`，参数 `page`、`page_size`（最大 100）、`search`。
+    - `GET` / `PUT /api/v1/admin/mok/affiliate-rebate-mode`，`PUT` 的请求体是 `{"mode": "usage"}`，会记入操作审计；
+    - `GET /api/v1/admin/mok/affiliate-usage-rebates`，参数 `page`、`page_size`（最大 100）、`search`。
   - 用户端：
     - `GET /api/v1/mok/affiliate/usage-rebates`，参数 `page`、`page_size`，只返回自己作为邀请人的记录；
     - `GET /api/v1/mok/affiliate/rebate-tiers` 多返回一个 `rebate_mode` 字段。
@@ -580,9 +582,9 @@ docker compose up -d
 - **存储与接口**：
   - 范围存在 `settings` 表的 `mok_affiliate_scope` 键里（`all` / `selected`）；被开启的用户在 `mok_affiliate_selected_users` 表里，迁移是 `mok_005_affiliate_selected_users.sql`。
   - 管理端：
-    - `GET` / `PUT /api/v1/mok/admin/affiliate-scope`，`PUT` 的请求体是 `{"scope": "selected"}`；
-    - `GET /api/v1/mok/admin/affiliate-users`，已开启的用户，参数 `page`、`page_size`；
-    - `GET` / `PUT /api/v1/mok/admin/affiliate-users/:user_id`，`PUT` 的请求体是 `{"selected": true}`。
+    - `GET` / `PUT /api/v1/admin/mok/affiliate-scope`，`PUT` 的请求体是 `{"scope": "selected"}`；
+    - `GET /api/v1/admin/mok/affiliate-users`，已开启的用户，参数 `page`、`page_size`；
+    - `GET` / `PUT /api/v1/admin/mok/affiliate-users/:user_id`，`PUT` 的请求体是 `{"selected": true}`。
     - 两个 `PUT` 都会记入操作审计。
   - 用户端：`GET /api/v1/mok/affiliate/access` 返回 `allowed`（是否对自己开启）和 `has_quota`（没开启但还有返利额度）；`GET /api/v1/mok/affiliate/rebate-tiers` 多返回一个 `allowed` 字段。
 - **前端的入口判断**：`src/mok/affiliate/access.ts` 在用户登录后请求一次 `access` 接口，结果按用户缓存在浏览器的 `localStorage` 里（键 `mok_affiliate_access`），所以刷新页面时入口不会闪一下。管理员改了某个用户的开关之后，那个用户下次刷新页面或打开邀请返利页时入口才会更新。接口请求失败且没有缓存时，入口照常显示，页面里的提示仍然准确。
@@ -639,12 +641,12 @@ docker compose up -d
 - **存储与接口**：
   - 配置分三个 `settings` 键（都是 JSON）：`mok_sms_config`（短信卡片）、`mok_sms_ops_alert`（运维告警的开关、手机号、最低级别）、`mok_sms_account_quota`（账号限额告警的手机号）。2026-11-18 第一版把两种管理员告警共用的手机号存在 `mok_sms_config` 的 `admin_phones` 里；两个新键还没保存过时，从这些旧字段读出来，保存短信卡片前先写进新键，所以升级不会丢号码。表有 `mok_sms_phones`（绑定的手机号）、`mok_sms_codes`（待验证的验证码，只存哈希）、`mok_sms_logs`（发送记录，保留 90 天），迁移是 `mok_006_sms.sql`。
   - 管理端：
-    - `GET` / `PUT /api/v1/mok/admin/sms/config`；
-    - `GET` / `PUT /api/v1/mok/admin/sms/ops-alert`，请求体 `{"enabled": true, "phones": ["..."], "min_level": "warning"}`；
-    - `GET` / `PUT /api/v1/mok/admin/sms/account-quota`，请求体 `{"phones": [{"phone": "...", "disabled": false}]}`；
+    - `GET` / `PUT /api/v1/admin/mok/sms/config`；
+    - `GET` / `PUT /api/v1/admin/mok/sms/ops-alert`，请求体 `{"enabled": true, "phones": ["..."], "min_level": "warning"}`；
+    - `GET` / `PUT /api/v1/admin/mok/sms/account-quota`，请求体 `{"phones": [{"phone": "...", "disabled": false}]}`；
     - 这两个接口的返回还带 `ready`：短信卡片是否已经启用、并填了对应的模板 ID，页面据此提示「短信还不能发出」。
-    - `POST /api/v1/mok/admin/sms/test`，请求体 `{"phone": "...", "event": "balance_low"}`；
-    - `GET /api/v1/mok/admin/sms/logs`，参数 `page`、`page_size`、`search`。
+    - `POST /api/v1/admin/mok/sms/test`，请求体 `{"phone": "...", "event": "balance_low"}`；
+    - `GET /api/v1/admin/mok/sms/logs`，参数 `page`、`page_size`、`search`。
   - 用户端：
     - `GET /api/v1/mok/sms/phone`：查看绑定状态，以及短信是否可用；
     - `POST /api/v1/mok/sms/phone/code`，请求体 `{"phone": "..."}`：发送验证码；
@@ -673,6 +675,6 @@ docker compose up -d
 - **用户这边**：充值页第一次渲染时请求一次列表，结果缓存在浏览器的 `localStorage` 里（键 `mok_payment_quick_amounts`），所以再打开页面不会先闪一下默认按钮。管理员改了之后，用户刷新页面就能看到。
 - **存储与接口**：
   - 存在 `settings` 表的 `mok_payment_quick_amounts` 键里（JSON 数组），没有新的迁移。
-  - `GET` / `PUT /api/v1/mok/admin/payment/quick-amounts`，`PUT` 的请求体是 `{"amounts": [30, 50, 100]}`，`[]` 表示恢复默认；用户端 `GET /api/v1/mok/payment/quick-amounts`。
+  - `GET` / `PUT /api/v1/admin/mok/payment/quick-amounts`，`PUT` 的请求体是 `{"amounts": [30, 50, 100]}`，`[]` 表示恢复默认；用户端 `GET /api/v1/mok/payment/quick-amounts`。
 - **代码位置**：后端 `backend/internal/mok/payment_quick_amounts.go`；前端 `frontend/src/mok/payment/` 下的 `quickAmounts.ts`（全局函数 `$mokQuickAmounts`、解析、缓存）和 `PaymentQuickAmounts.vue`（设置卡片），接口封装在 `frontend/src/mok/api/paymentQuickAmounts.ts`。
 - **接入点的合并模拟**：用上游过去一年的提交回放。`PaymentView.vue` 那一行在 2026-04 上游两次重做支付页时会冲突，之后的 40 次提交都能干净合并；`SettingsView.vue` 的接入点没有冲突。

@@ -28,13 +28,13 @@ export interface AffiliateTierStatus {
 }
 
 export async function getAffiliateRebateTiers(): Promise<AffiliateRebateTier[]> {
-  const { data } = await apiClient.get<{ tiers: AffiliateRebateTier[] }>('/mok/admin/affiliate-rebate-tiers')
+  const { data } = await apiClient.get<{ tiers: AffiliateRebateTier[] }>('/admin/mok/affiliate-rebate-tiers')
   return data.tiers ?? []
 }
 
 /** Replaces the tiers and returns them as stored (sorted, rounded). An empty list disables them. */
 export async function saveAffiliateRebateTiers(tiers: AffiliateRebateTier[]): Promise<AffiliateRebateTier[]> {
-  const { data } = await apiClient.put<{ tiers: AffiliateRebateTier[] }>('/mok/admin/affiliate-rebate-tiers', { tiers })
+  const { data } = await apiClient.put<{ tiers: AffiliateRebateTier[] }>('/admin/mok/affiliate-rebate-tiers', { tiers })
   return data.tiers ?? []
 }
 
